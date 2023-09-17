@@ -1,0 +1,13 @@
+#ifndef INCLUDE_WOODLAND_ACORN_CONFIG_H
+#define INCLUDE_WOODLAND_ACORN_CONFIG_H
+
+// Have extern/dc3d.f.
+#cmakedefine WOODLAND_ACORN_HAVE_DC3D
+
+// Enable vectorization. Increases build time.
+#cmakedefine WOODLAND_ACORN_VECTORIZE
+
+// Pack size for vectorization.
+#cmakedefine WOODLAND_ACORN_PACK_N @WOODLAND_ACORN_PACK_N@
+
+#endif

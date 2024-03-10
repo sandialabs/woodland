@@ -38,24 +38,24 @@ struct FlatRectangle : public Surface {
   typedef std::shared_ptr<FlatRectangle> Ptr;
   typedef std::shared_ptr<const FlatRectangle> CPtr;
 
-  virtual bool is_v_periodic () const override { return false; }
+  bool is_v_periodic () const override { return false; }
 
-  virtual void get_position (const Real uv[2], Real xyz[3]) const override
+  void get_position (const Real uv[2], Real xyz[3]) const override
   { xyz[0] = uv[0]; xyz[1] = uv[1]; xyz[2] = 0; }
-  virtual void get_normal   (const Real uv[2], Real nml[3]) const override
+  void get_normal   (const Real uv[2], Real nml[3]) const override
   { nml[0] = nml[1] = 0; nml[2] = 1; }
-  virtual void get_vhat     (const Real uv[2], Real tan[3]) const override
+  void get_vhat     (const Real uv[2], Real tan[3]) const override
   { tan[0] = tan[2] = 0; tan[1] = 1; }
-  virtual void get_uhat     (                 Real uhat[3]) const override
+  void get_uhat     (                 Real uhat[3]) const override
   { uhat[0] = 1; uhat[1] = uhat[2] = 0; }
   // Jacobian determinant.
-  virtual Real get_jacdet   (const Real uv[2]) const override { return 1; }
+  Real get_jacdet   (const Real uv[2]) const override { return 1; }
 
-  virtual void get_uv(const Real xyz[3], Real uv[2]) const override
+  void get_uv(const Real xyz[3], Real uv[2]) const override
   { uv[0] = xyz[0]; uv[1] = xyz[1]; }
 
   // Area of the surface.
-  virtual Real get_area() const override { return 2*M_PI; }
+  Real get_area() const override { return 2*M_PI; }
 };
 
 // Generalized cylinder centered at origin. u in [0,1] is along the GC; v in [0,
@@ -90,18 +90,18 @@ struct GeneralizedCylinder : public Surface {
   Real get_length   () const { return length; }
   Real get_rotation () const { return rotation; }
 
-  virtual bool is_v_periodic () const override { return true; }
+  bool is_v_periodic () const override { return true; }
 
-  virtual void get_position (const Real uv[2], Real xyz[3]) const override;
-  virtual void get_normal   (const Real uv[2], Real nml[3]) const override;
-  virtual void get_vhat     (const Real uv[2], Real tan[3]) const override;
-  virtual void get_uhat     (                 Real uhat[3]) const override;
-  virtual Real get_jacdet   (const Real uv[2]) const override;
+  void get_position (const Real uv[2], Real xyz[3]) const override;
+  void get_normal   (const Real uv[2], Real nml[3]) const override;
+  void get_vhat     (const Real uv[2], Real tan[3]) const override;
+  void get_uhat     (                 Real uhat[3]) const override;
+  Real get_jacdet   (const Real uv[2]) const override;
 
-  virtual void get_uv(const Real xyz[3], Real uv[2]) const override;
+  void get_uv(const Real xyz[3], Real uv[2]) const override;
 
   // Area of the GC excluding the ends.
-  virtual Real get_area() const override;
+  Real get_area() const override;
 
 private:
   Shape shape;

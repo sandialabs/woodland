@@ -12,6 +12,7 @@ namespace acorn {
 
 template <typename T> inline T square (const T& x) { return x*x; }
 template <typename T> inline T cube (const T& x) { return x*x*x; }
+template <typename T> inline T zero (const T&) { return T(0); }
 
 double urand();
 
@@ -212,6 +213,18 @@ void matvec (const Real x[3], const Real y[3], const Real z[3],
 // v = [x; y; z]' u.
 void tmatvec (const Real x[3], const Real y[3], const Real z[3],
               const Real u[3], Real v[3]);
+
+std::vector<std::string> split(std::string s, const std::string& delim);
+
+struct Sprinter {
+  Sprinter (const int nbuf_ = 128) : n(0), nbuf(nbuf_), buf(nbuf) {}
+  void add(const char* format, ...);
+  void out(FILE* stream = stdout, const bool newline = true);
+
+private:
+  int n, nbuf;
+  std::vector<char> buf;
+};
 
 int util_test();
 

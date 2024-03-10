@@ -129,13 +129,13 @@ struct SigmaExactIntegrands : public CallerIntegrands {
     }
   }
 
-  virtual int nintegrands () const override { return 6; }
+  int nintegrands () const override { return 6; }
 
-  virtual Real permitted_R_min (const Real R_max) const override {
+  Real permitted_R_min (const Real R_max) const override {
     return 1e-3*R_max;
   }
 
-  virtual void eval (const int n, CRPtr ps, RPtr integrand) const override {
+  void eval (const int n, CRPtr ps, RPtr integrand) const override {
     for (int i = 0; i < n; ++i) {
       const auto p = &ps[2*i];
       const Real src[] = {p[0], p[1], 0};

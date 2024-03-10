@@ -95,6 +95,11 @@ bool intersect_line_circle_nearer(
   // If requested, compute p_xb with row-major order.
   Real* p_xb = nullptr);
 
+// Calculate the point pt_nearest pt on the boundary of p. One of on_vertex and
+// on_edge is -1; the other is the index of the entity pt_nearest is on.
+void calc_nearest_point_on_polygon_boundary_to_point(
+  const Polygon& p, const Pt pt, Pt pt_nearest, int& on_vertex, int& on_edge);
+
 int unittest();
 
 } // namespace plane

@@ -46,13 +46,13 @@ struct Integrands : public acorn::CallerIntegrands {
 
   const Real* get_singular_point () const { return cc; }
 
-  virtual int nintegrands () const override { return 6; }
+  int nintegrands () const override { return 6; }
 
-  virtual Real permitted_R_min (const Real R_max) const override {
+  Real permitted_R_min (const Real R_max) const override {
     return 1e-3*R_max;
   }
 
-  virtual void eval (const int n, CRPtr p, RPtr integrand) const override {
+  void eval (const int n, CRPtr p, RPtr integrand) const override {
     for (int i = 0; i < n; ++i) {
       Real pt_src[3];
       mv3::sum3(1, src, p[2*i], xhat, p[2*i+1], yhat, pt_src);
@@ -84,7 +84,8 @@ void calc_sigma_const_disloc_rect (
   const Real lam, const Real mu, const Real src[3], const Real nml[3],
   const Real tangent[3], const Real xy_side_lens[2], const Real disloc[3],
   const Real rcv[3], Real sigma[6],
-  const int np_radial, const int np_angular, int triquad_order)
+  const int np_radial, const int np_angular,
+  int triquad_order, const Real triquad_tol)
 {
   using namespace acorn;
   integrals::Options io;
@@ -101,7 +102,8 @@ void calc_sigma_const_disloc_rect (
   if (dist[1] < 1e-4*L && dist[0] < L)
     integrals::calc_hfp(io, p, f.get_singular_point(), f, sigma);
   else {
-    if (triquad_order <= 0) triquad_order = get_triquad_order(L, dist[0]);
+    if (triquad_order <= 0)
+      triquad_order = get_triquad_order(L, dist[0], triquad_tol);
     integrals::calc_integral(p, f, sigma, triquad_order);
   }
 }
@@ -175,6 +177,91 @@ int unittest () {
   calc_sigma_const_disloc_rect(lam, mu, src, nml, tangent, xy_side_lens, disloc,
                                rcv, sigma);
   return ne;
+}
+
+static void study_triquad_table () {
+  const int triquad_orders[] = {1, 2, 4, 6, 8, 12};
+  const int nto = sizeof(triquad_orders)/sizeof(*triquad_orders);
+  const Real tols[] = {1e-6, 1e-8, 1e-10, 1e-12, 1e-14};
+  const int ntol = sizeof(tols)/sizeof(*tols);
+
+  const Real lam = 1, mu = 1;
+  const Real src[3] = {0}, nml[] = {0,0,1}, tan[] = {1,0,0}, xy_side_lens[] = {1,1};
+  const auto calc_sigma =
+    [&] (CRPtr rcv, CRPtr disloc, const int triquad_order, RPtr sigma) {
+      calc_sigma_const_disloc_rect(lam, mu, src, nml, tan, xy_side_lens,
+                                   disloc, rcv, sigma, -1, -1, triquad_order);
+    };
+
+  const Real max_rad = 5000, max_lat = M_PI/4;
+  const int nrad = 250, fac = 3, nlat = fac*10, ncirc = fac*10;
+  Real disloc[3] = {0}, rcv[3], sigma_ref[6], sigma[6];
+  Real rad_usable[ntol][nto] = {0};
+  for (int irad = 0; irad <= nrad; ++irad) {
+    const Real a = Real(irad)/nrad;
+    const Real radius = std::exp((1-a)*std::log(1.5) + a*std::log(max_rad));
+    Real nums[nto] = {0}, dens[nto] = {0};
+    for (int ilat = 0; ilat <= nlat; ++ilat) {
+      const Real lat = Real(ilat)/nlat*max_lat;
+      rcv[2] = radius*std::sin(lat);
+      const Real f = std::cos(lat);
+      for (int icirc = 0; icirc <= ncirc; ++icirc) {
+        const Real theta = Real(icirc)/ncirc*(M_PI/2);
+        rcv[0] = radius*f*std::cos(theta);
+        rcv[1] = radius*f*std::sin(theta);
+        for (int id = 0; id < 3; ++id) {
+          disloc[id] = 1;
+          calc_sigma(rcv, disloc, 20, sigma_ref);
+          for (int ito = 0; ito < nto; ++ito) {
+            calc_sigma(rcv, disloc, triquad_orders[ito], sigma);
+            for (int i = 0; i < 6; ++i) {
+              dens[ito] = std::max(dens[ito], std::abs(sigma_ref[i]));
+              nums[ito] = std::max(nums[ito], std::abs(sigma[i] - sigma_ref[i]));
+            }
+          }
+          disloc[id] = 0;
+        }
+      }
+    }
+    printf("%1.5e:", radius);
+    for (int ito = 0; ito < nto; ++ito) {
+      const Real err = nums[ito]/dens[ito];
+      for (int ie = 0; ie < ntol; ++ie)
+        if (err < tols[ie] && rad_usable[ie][ito] == 0)
+          rad_usable[ie][ito] = radius;
+      printf(" %1.3e", err);
+    }
+    printf("\n");
+  }
+  for (int ie = ntol-1; ie >= 0; --ie) {
+    if (ie > 0) {
+      printf(ie == ntol-1 ? "  " : " else ");
+      printf("if (tol <= %1.1e) {\n", tols[ie]);
+    } else {
+      printf(" else {\n");
+    }
+    bool done = false;
+    for (int ito = nto-1; ito >= 0; --ito) {
+      printf(ito == nto-1 ? "    return (" : "            ");
+      if (rad_usable[ie][ito] != 0) {
+        printf("dist < %6.1f*L ? %2d :\n",
+               std::ceil(10*(rad_usable[ie][ito] - std::sqrt(0.5)))/10.0,
+               ito == nto-1 ? 20 : triquad_orders[ito+1]);
+      } else {
+        printf("%d);\n", triquad_orders[ito+1]);
+        done = true;
+        break;
+      }
+    }
+    if (not done) printf("            %d);\n", triquad_orders[0]);
+    printf("  }");
+  }
+  printf("\n");
+}
+
+void study_triquad () {
+  study_triquad_table();
+  //todo binary search
 }
 
 } // namespace fs3d

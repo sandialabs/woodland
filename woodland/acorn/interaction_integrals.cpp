@@ -12,11 +12,117 @@
 
 #include <cstdio>
 
+#ifdef WOODLAND_ACORN_FIGURE
+# include <memory>
+#endif
+
 namespace woodland {
 namespace acorn {
 namespace integrals {
 
-Options::Options () : np_radial(40), np_angular(40) {}
+#ifdef WOODLAND_ACORN_FIGURE
+namespace {
+
+struct Figure {
+  typedef std::shared_ptr<Figure> Ptr;
+
+  Figure (const std::string fname = "fig_acorn_integrals.py") {
+    fid = fopen(fname.c_str(), "w");
+    assert(fid);
+    fprintf(fid, "import numpy as npy\n");
+  }
+
+  ~Figure () { if (fid) fclose(fid); }
+
+  void calc_hfp_1 (const Polygon& p, const Pt cc, const CallerIntegrands& f,
+                   const int ie_) {
+    ie = ie_;
+    if (ie != 0) return;
+    {
+      Sprinter s;
+      s.add("cc = npy.array([%1.6e,%1.6e])\n", cc[0], cc[1]);
+      s.add("poly = npy.array([");
+      for (int i = 0; i < p.n; ++i)
+        s.add("[%1.6e,%1.6e],", p.xys[2*i], p.xys[2*i+1]);
+      s.add("])\n");
+      s.out(fid, false);
+    }
+    {
+      Real xmin = 1e20, xmax = -xmin, ymin = xmin, ymax = xmax;
+      for (int i = 0; i < p.n; ++i) {
+        xmin = std::min(xmin, p.xys[2*i]);
+        xmax = std::max(xmax, p.xys[2*i]);
+        ymin = std::min(ymin, p.xys[2*i+1]);
+        ymax = std::max(ymax, p.xys[2*i+1]);
+      }
+      const Real e = 0.02, dx = xmax - xmin, dy = ymax - ymin;
+      xmin -= e*dx; xmax += e*dx;
+      ymin -= e*dy; ymax += e*dy;
+      fprintf(fid, "extent = [%1.6e,%1.6e,%1.6e,%1.6e]\n",
+              xmin, xmax, ymin, ymax);
+      const int n = 128;
+      fprintf(fid, "f = npy.array([");
+      for (int i = 0; i < n; ++i) {
+        fprintf(fid, "[");
+        const Real a = (i + 0.5)/n, y = (1-a)*ymin + a*ymax;
+        for (int j = 0; j < n; ++j) {
+          const Real b = (j + 0.5)/n, x = (1-b)*xmin + b*xmax;
+          const Pt pt = {x, y};
+          if (not plane::is_point_inside_convex_polygon(p, pt)) {
+            fprintf(fid, "npy.nan,");
+            continue;
+          }
+          Real integrand[6];
+          f.eval(1, pt, integrand);
+          fprintf(fid, "%1.6e,", integrand[iidx]);
+        }
+        fprintf(fid, "],\n");
+      }
+      fprintf(fid, "])\n");
+    }
+  }
+
+  void circular_sector_term_1 (
+    const Options& o, const Real th0, const Real th1, const Pt cc, const Real R,
+    CRPtr radii, CRPtr radial_integrand, const int integrand_idx)
+  {
+    if (integrand_idx != iidx) return;
+    Sprinter s;
+    if (ie == 0) s.add("th0 = []; th1 = []; R = []; radii = []\n");
+    s.add("th0.append(%1.6e); th1.append(%1.6e); R.append(%1.6e)\n", th0, th1, R);
+    if (ie == iie) {
+      s.add("ie_circsec = %d\n", ie);
+      s.add("radii = npy.array([");
+      for (int i = 0; i < o.np_radial; ++i)
+        s.add("%1.6e,", radii[i]);
+      s.add("])\n");
+      s.add("radial_integrand = npy.array([");
+      for (int i = 0; i < o.np_radial; ++i)
+        s.add("%1.6e,", radial_integrand[i]);
+      s.add("])\n");
+    }
+    s.out(fid, false);
+  }
+
+private:
+  FILE* fid = nullptr;
+  const int iie = 1, iidx = 2;
+  int ie;
+};
+
+Figure::Ptr g_fig;
+
+} // namespace
+
+void fig_init () { g_fig = std::make_shared<Figure>(); }
+void fig_fin  () { g_fig = nullptr; }
+
+#else
+
+void fig_init () {}
+void fig_fin  () {}
+
+#endif // WOODLAND_ACORN_FIGURE
 
 typedef Matvec2d<Real> mv2;
 
@@ -133,7 +239,7 @@ calc_hfp_circular_sector_term (const Options& o, const Pt cc, const Real R,
     for (int j = 0; j < o.np_radial; ++j)
       radial_integrand[i][j] = 0;
   
-  { // Form the integrand in r from radii[1] to R.
+  { // Form the integrand in r from R_min to R.
     assert(is_gll_supported(o.np_radial));
     const auto* const qr = get_x_gll(o.np_radial);
     for (int j = 0; j < o.np_radial; ++j) {
@@ -144,7 +250,7 @@ calc_hfp_circular_sector_term (const Options& o, const Pt cc, const Real R,
       calc_hfp_circle_arc_integral_times_rsquared(o, cc, r, th0, th1, f,
                                                   integral);
       for (int i = 0; i < nintegrands; ++i)
-        radial_integrand[i][j] += integral[i];
+        radial_integrand[i][j] = integral[i];
     }
   }
 
@@ -154,6 +260,11 @@ calc_hfp_circular_sector_term (const Options& o, const Pt cc, const Real R,
     for (int i = 0; i < nintegrands; ++i) {
       RadialP p(o.np_radial, radii, radial_integrand[i]);
       hfps[i] += hfp::calc_hfp(o1d, p, 0, R, 0);
+#ifdef WOODLAND_ACORN_FIGURE
+      if (g_fig)
+        g_fig->circular_sector_term_1(o, th0, th1, cc, R, radii,
+                                      radial_integrand[i], i);
+#endif
     }
   }
 }
@@ -208,6 +319,9 @@ calc_integral_radtricirc (const Options& o, const Pt cc, const Real R,
   // Intersection of (zero, v) with circle.
   Pt p_base;
   const auto Rv = mv2::norm2(v);
+  //todo If Rv is very close to R, then this integral doesn't contribute very
+  // much. In the future, I'd like to filter out such cases. For now, assert
+  // here so I know when this case is occurring at the machine precision level.
   assert(Rv > R);
   mv2::copy(v, p_base);
   mv2::scale(R/Rv, p_base);
@@ -273,6 +387,9 @@ bool calc_hfp (const Options& o, const Polygon& p, const Pt cc,
     const auto R0 = std::sqrt(R02);
     Real th0, th1;
     calc_thetas(v0, v1, th0, th1);
+#ifdef WOODLAND_ACORN_FIGURE
+    if (g_fig) g_fig->calc_hfp_1(p, cc, f, ie);
+#endif
     Real lhfps[CallerIntegrands::max_n_integrand] = {0};
     // H.f.p. over the circular sector.
     calc_hfp_circular_sector_term(o, cc, R0, th0, th1, f, lhfps);
@@ -329,6 +446,64 @@ bool calc_integral (const Polygon& p, const CallerIntegrands& f, RPtr integral,
   for (int i = 0; i < p.n; ++i)
     calc_integral(tq_order, centroid, &p.xys[2*i], &p.xys[2*((i+1)%p.n)], f,
                   integral);
+  return true;
+}
+
+bool calc_integral_tensor_quadrature (
+  const Options& o, const Polygon& p, const CallerIntegrands& f,
+  const Pt anchor, const bool nearest_bdy_pt_to_anchor,
+  RPtr integral)
+{
+  const int nint = f.nintegrands();
+
+  Pt p_common;
+  if (nearest_bdy_pt_to_anchor) {
+    int on_vertex, on_edge;
+    plane::calc_nearest_point_on_polygon_boundary_to_point(
+      p, anchor, p_common, on_vertex, on_edge);
+  } else {
+    mv2::copy(anchor, p_common);
+  }
+  
+  Quadrature iq1d(o.np_radial, Quadrature::gl);
+  const Real* iqx, * iqw;
+  iq1d.get_xw(iqx, iqw);
+  const int inq = iq1d.nq;
+  Quadrature jq1d(o.np_angular, Quadrature::gl);
+  const Real* jqx, * jqw;
+  jq1d.get_xw(jqx, jqw);
+  const int jnq = jq1d.nq;
+
+  Real p_area = 0;
+  for (int i = 1; i < p.n-1; ++i)
+    p_area += std::abs(Triangle2D::calc_signed_area(
+                         &p.xys[0], &p.xys[2*i], &p.xys[2*(i+1)]));
+
+  EvalAccumulator ea(f);
+  for (int tri = 0; tri < p.n; ++tri) {
+    const auto v1 = &p.xys[2*tri], v2 = &p.xys[2*((tri+1)%p.n)];
+    const Real area = std::abs(Triangle2D::calc_signed_area(p_common, v1, v2));
+    if (area < o.relative_area_tol*p_area) continue;
+    for (int i = 0; i < inq; ++i) {
+      const Real b = (1 + iqx[i])/2;
+      Pt j1;
+      mv2::sum2(b, v1, -b, v2, j1);
+      for (int j = 0; j < jnq; ++j) {
+        const Real a = (1 + jqx[j])/2;
+        Pt x, j2;
+        // Degenerate side of quad for v = p_common:
+        //   (1-a)*(1-b) v + a*(1-b) v = (1-b) v.
+        mv2::sum3(1-b, p_common, a*b, v1, (1-a)*b, v2, x);
+        mv2::sum3(-1, p_common, a, v1, 1-a, v2, j2);
+        const Real jacdet = std::abs(j1[0]*j2[1] - j1[1]*j2[0]);
+        ea.accum(x, jacdet*iqw[i]*jqw[j]/4);
+      }
+    }
+  }
+  const auto* eai = ea.get_integral();
+  for (int i = 0; i < nint; ++i)
+    integral[i] += eai[i];
+  
   return true;
 }
 
@@ -497,12 +672,23 @@ int test_integral () {
            hfps[0], std::abs(hfps[0] - 45.0/4));
     ++ne;
   }
-  Real integrals[NonsingularTestIntegrands::nint] = {0};
-  if ( ! calc_integral(p, f, integrals)) ++ne;
-  if (std::abs(integrals[0] - 45.0/4) > 1e2*mv2::eps) {
-    printf("otherint::test_integral: %f %e\n",
-           integrals[0], std::abs(integrals[0] - 45.0/4));
-    ++ne;
+  const Real value = 45.0/4;
+  for (int i = 0; i < 2; ++i) {
+    Real integrals[NonsingularTestIntegrands::nint] = {0};
+    if (i == 0) {
+      if ( ! calc_integral(p, f, integrals)) ++ne;
+    } else {
+      Pt pt{5,5};
+      Options o;
+      o.np_radial = o.np_angular = 12;
+      if ( ! calc_integral_tensor_quadrature(o, p, f, pt, true, integrals))
+        ++ne;
+    }
+    if (std::abs(integrals[0] - value) > 1e2*mv2::eps) {
+      printf("otherint::test_integral: %f %e\n",
+             integrals[0], std::abs(integrals[0] - value));
+      ++ne;
+    }
   }
   return ne;
 }
@@ -510,8 +696,8 @@ int test_integral () {
 int analyze_area () {
   int ne = 0;
   struct AnalyzeP : hfp::CallerP {
-    virtual Real eval (const Real x) const override { return 2*M_PI*cube(x); }
-    virtual void eval_p_c (const Real c, Real& pc, Real& pdc) const override
+    Real eval (const Real x) const override { return 2*M_PI*cube(x); }
+    void eval_p_c (const Real c, Real& pc, Real& pdc) const override
     { pc = 0; pdc = 0; }
   };
   Real xys[] = {-1,-1,1,-1,1,1,-1,1}, cc[2] = {0.1, -0.2};

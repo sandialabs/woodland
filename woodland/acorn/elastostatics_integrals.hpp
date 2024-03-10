@@ -8,7 +8,8 @@ namespace acorn {
 
 // Return the triangle quadrature appropriate for a receiver at a distance from
 // a polygon of a characteristic size.
-int get_triquad_order(const Real size, const Real distance);
+int get_triquad_order(const Real size, const Real distance,
+                      const Real tol = 1e-8);
 
 } // namespace acorn
 } // namespace woodland

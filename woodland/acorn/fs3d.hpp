@@ -43,7 +43,9 @@ void calc_sigma_const_disloc_rect(
   // For integrals::calc_hfp.
   const int hfp_np_radial = 8, const int hfp_np_angular = 6,
   // For integrals::calc_integral. If -1, set based on distance.
-  int triquad_order = -1);
+  int triquad_order = -1,
+  // If triquad_order = -1, then use this tol in get_triquad_order.
+  const Real triquad_tol = 1e-10);
 
 // Use Okada's dc3d to compute sigma.
 void calc_sigma_const_disloc_rect_okada(
@@ -52,6 +54,8 @@ void calc_sigma_const_disloc_rect_okada(
   const Real rcv[3], Real sigma[6]);
 
 bool time_calc_sigma_point(const int n, const bool verbose = true);
+
+void study_triquad();
 
 int unittest();
 

@@ -45,7 +45,7 @@ int test_fullspace_rect_against_okada () {
           Real sigma_me[6], sigma_ok[6], sigma_ok1[6];
           fs3d::calc_sigma_const_disloc_rect(
             lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv,
-            sigma_me, 40, 40);
+            sigma_me, 40, 40, -1, 1e-12);
           call_okada(
             true, false, lam, mu, 1, src, rcv, disloc, nml, xy_side_lens,
             sigma_ok);

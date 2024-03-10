@@ -13,7 +13,7 @@ void call_okada (const bool fullspace, const bool point, const Real lam,
                  Real* sigmas) {
   typedef Matvec<3,Real> mv3;
   const auto alpha = acorn::lambda_mu_to_alpha(lam, mu);
-  ompparfor for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; ++i) {
     const Real* nml = &nmls[3*i];
     assert(std::abs(mv3::norm22(nml) - 1) <= std::sqrt(mv3::eps));
     const Real base = std::sqrt(square(nml[0]) + square(nml[1]));
@@ -67,7 +67,8 @@ void call_okada (const bool fullspace, const bool point, const Real lam,
       const Real aw = strike_dip_dims[2*i+1]/2;
       const int iret =
         acorn::okada::dc3d(alpha, p[0], p[1], p[2], depth, dipdeg,
-                           -al, al, -aw, aw,
+                           -al, al, -aw, aw,  // dc3d.f
+                           // al, al, aw, aw, // dc3omp.f
                            pot[0], pot[1], pot[2],
                            u, du,
                            fullspace);

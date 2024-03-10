@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstdarg>
 #include <limits>
 
 namespace woodland {
@@ -243,6 +244,51 @@ void tmatvec (const Real x[3], const Real y[3], const Real z[3],
   v[2] = x[2]*u[0] + y[2]*u[1] + z[2]*u[2];
 }
 
+std::vector<std::string> split (std::string s, const std::string& delim) {
+  std::vector<std::string> toks;
+  const auto dsz = delim.size();
+  for (;;) {
+    const auto p = s.find(delim);
+    if (p == std::string::npos) break;
+    toks.push_back(s.substr(0, p));
+    s.erase(0, p + dsz);
+  }
+  toks.push_back(s);
+  return toks;
+}
+
+static int test_split () {
+  const auto toks = split("  hi how 3.14?  7", " ");
+  int ne = 0;
+  if (toks.size() != 7) ++ne;
+  const int idxs[] = {2,3,4,6};
+  const char* strs[] = {"hi", "how", "3.14?", "7"};
+  for (size_t i = 0; i < sizeof(idxs)/sizeof(*idxs); ++i)
+    if (toks[idxs[i]] != strs[i]) ++ne;
+  return ne;
+}
+
+void Sprinter::add (const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  for (;;) {
+    const int ncur = vsnprintf(&buf[n], nbuf-n, format, args);
+    if (ncur < nbuf-n) {
+      n += ncur;
+      break;
+    }
+    nbuf *= 2;
+    buf.resize(nbuf);
+  }
+  va_end(args);
+  assert(n < nbuf);
+}
+
+void Sprinter::out (FILE* stream, const bool newline) {
+  const char* format = newline ? "%s\n" : "%s";
+  fprintf(stream, format, buf.data());
+}
+
 int util_test () {
   int nerr = 0;
   nerr += test_calc_parabola_coefs();
@@ -250,6 +296,7 @@ int util_test () {
   nerr += test_cosxm1();
   nerr += test_sqrt1pxm1();
   nerr += test_rotate();
+  nerr += test_split();
   return nerr;
 }
 

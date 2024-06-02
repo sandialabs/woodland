@@ -8,6 +8,7 @@
 #include "woodland/acorn/hfp.hpp"
 #include "woodland/acorn/interaction_integrals.hpp"
 #include "woodland/acorn/fs3d.hpp"
+#include "woodland/acorn/hs3d.hpp"
 #include "woodland/acorn/elastostatics.hpp"
 #include "woodland/acorn/vv.hpp"
 #include "woodland/acorn/dbg.hpp"
@@ -142,15 +143,11 @@ int test_halfspace_rect_against_okada () {
 #endif // WOODLAND_ACORN_HAVE_DC3D
 } // namespace
 
-#define rununittest(f) do {                     \
-    ne = f();                                   \
-    if (ne) printf(#f " ne %d\n", ne);          \
-    nerr += ne;                                 \
-  } while (0)
-
 int unittest () {
   int nerr = 0, ne;
   rununittest(util_test);
+  rununittest(fs3d::unittest);
+  rununittest(hs3d::unittest);
   rununittest(linalg::unittest);
   rununittest(TriangleQuadrature::unittest);
   rununittest(mv2::unittest);
@@ -159,7 +156,6 @@ int unittest () {
   rununittest(plane::unittest);
   rununittest(hfp::unittest);
   rununittest(integrals::unittest);
-  rununittest(fs3d::unittest);
 #ifdef WOODLAND_ACORN_HAVE_DC3D
   rununittest(test_fullspace_rect_against_okada);
   rununittest(test_halfspace_rect_against_okada);

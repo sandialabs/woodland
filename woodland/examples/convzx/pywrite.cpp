@@ -24,7 +24,7 @@ void pywrite_double_array (FILE* fp, const std::string& var,
   for (int i = 0, k = 0; i < m; ++i) {
     fprintf(fp, "[");
     for (int j = 0; j < n; ++j, ++k) {
-      fprintf(fp, "%12.5e,", a[k]);
+      fprintf(fp, "%16.9e,", a[k]);
       if ((j+1) % 8 == 0) fprintf(fp, "\n");
     }
     fprintf(fp, "],\n");

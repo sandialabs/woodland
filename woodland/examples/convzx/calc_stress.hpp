@@ -22,6 +22,7 @@ struct Stress {
     QuadratureParams qp;
     Real hfp_dist_fac = 1.0;
     bool use_calc_integral_tensor_quadrature = false;
+    bool halfspace = false;
 
     Options () {}
 
@@ -30,7 +31,7 @@ struct Stress {
 
   struct Info {
     bool hfp;
-    int triquad_order;
+    int triquad_order, triquad_order_halfspace;
   };
 
   void init(const Discretization::CPtr& d);

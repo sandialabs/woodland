@@ -9,7 +9,8 @@
       std::stringstream _ss_;                                           \
       _ss_ << __FILE__ << ":" << __LINE__ << ": The condition:\n"       \
            << #condition "\n is an error";                              \
-        throw std::logic_error(_ss_.str());                             \
+      fprintf(stderr, "%s\n", _ss_.str().c_str());                      \
+      throw std::logic_error(_ss_.str());                               \
     }                                                                   \
   } while (0)
 
@@ -18,7 +19,8 @@
       std::stringstream _ss_;                                           \
       _ss_ << __FILE__ << ":" << __LINE__ << ": The condition:\n"       \
            << #condition "\nled to the exception\n" << message << "\n"; \
-        throw std::logic_error(_ss_.str());                             \
+      fprintf(stderr, "%s\n", _ss_.str().c_str());                      \
+      throw std::logic_error(_ss_.str());                               \
     }                                                                   \
   } while (0)
 
@@ -30,5 +32,11 @@
 #else
 # define assert_ok(ok) assert(ok)
 #endif
+
+#define rununittest(f) do {                     \
+    ne = f();                                   \
+    if (ne) printf(#f " ne %d\n", ne);          \
+    nerr += ne;                                 \
+  } while (0)
 
 #endif

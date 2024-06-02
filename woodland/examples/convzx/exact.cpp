@@ -3,6 +3,7 @@
 #include "woodland/acorn/util.hpp"
 #include "woodland/acorn/matvec.hpp"
 #include "woodland/acorn/fs3d.hpp"
+#include "woodland/acorn/hs3d.hpp"
 #include "woodland/acorn/interaction_integrals.hpp"
 #include "woodland/acorn/elastostatics_integrals.hpp"
 #include "woodland/acorn/dbg.hpp"
@@ -74,6 +75,8 @@ struct Exact::Integrands : public acorn::CallerIntegrands {
 
   int nintegrands () const override { return nint; }
 
+  void set_halfspace (const bool v) { halfspace_terms = v; }
+
   void eval (const int n, const Real* pts, RPtr integrands) const override {
     for (int k = 0; k < n; ++k) {
       const Real x = pts[2*k], y = pts[2*k+1];
@@ -86,8 +89,12 @@ struct Exact::Integrands : public acorn::CallerIntegrands {
       e.d->get_disloc(x, y, disloc_lcs);
       mv3::tmatvec(lcs, disloc_lcs, disloc_gcs);
       const auto integrand = &integrands[nint*k];
-      acorn::fs3d::calc_sigma_point(e.lam, e.mu, p, &lcs[6], disloc_gcs, rcv,
-                                    integrand);
+      if (halfspace_terms)
+        acorn::hs3d::calc_sigma_point_halfspace_terms(
+          e.lam, e.mu, p, &lcs[6], disloc_gcs, rcv, integrand);
+      else
+        acorn::fs3d::calc_sigma_point(e.lam, e.mu, p, &lcs[6], disloc_gcs, rcv,
+                                      integrand);
       for (int i = 0; i < nint; ++i) integrand[i] *= jacdet;
     }
   }
@@ -103,6 +110,7 @@ struct Exact::Integrands : public acorn::CallerIntegrands {
 private:
   const Exact& e;
   Real rect[8], rcv[3];
+  bool halfspace_terms = false;
 };
 
 void Exact::init (const Description::CPtr& d_) {
@@ -111,6 +119,10 @@ void Exact::init (const Description::CPtr& d_) {
 
 void Exact::set_lam_mu (const Real lam_, const Real mu_) {
   lam = lam_; mu = mu_;
+}
+
+void Exact::set_halfspace (const bool v) {
+  halfspace = v;
 }
 
 void Exact::set_options (const Options& o_) {
@@ -134,22 +146,45 @@ void Exact::calc_stress (const Real x, const Real y, Real sigma_lcs[6]) const {
   for (int iy = 0; iy < o.nyr; ++iy)
     for (int ix = 0; ix < o.nxr; ++ix) {
       Integrands igs(*this, x, y, xbs, ybs, ix, iy);
+      const bool
+        hfp = ix == x_in && iy == y_in,
+        tensor_quad = (not hfp &&
+                       std::abs(ix - x_in) <= 1 && std::abs(iy - y_in) <= 1),
+        tri_quad = not hfp && not tensor_quad;
+      int triquad_order = o.triquad_order;
+      int triquad_order_hs = o.triquad_order;
+      if (o.triquad_order < 0 && tri_quad) {
+        const Real
+          L = std::max(xbs[ix+1] - xbs[ix], ybs[iy+1] - ybs[iy]),
+          D = std::max(std::max(xbs[ix] - x, x - xbs[ix+1]),
+                       std::max(ybs[iy] - y, y - ybs[iy+1]));
+        const Real tol = 1e-16;
+        triquad_order = acorn::get_triquad_order(L, D, tol);
+        if (halfspace) {
+          Real sz, rz;
+          d->get_surface((xbs[ix] + xbs[ix+1])/2, (ybs[iy] + ybs[iy+1])/2, sz);
+          d->get_surface(x, y, rz);
+          triquad_order_hs = acorn::get_triquad_order(
+            L, std::sqrt(acorn::square(D) + acorn::square(rz + sz)), tol);
+        }
+      }
       const auto poly = igs.get_src_polygon();
-      if (ix == x_in && iy == y_in)
+      if (hfp)
         acorn::integrals::calc_hfp(io, poly, rcv, igs, sigma);
-      else if (std::abs(ix - x_in) <= 1 && std::abs(iy - y_in) <= 1)
+      else if (tensor_quad)
         acorn::integrals::calc_integral_tensor_quadrature(
           io, poly, igs, rcv, true, sigma);
-      else {
-        int triquad_order = o.triquad_order;
-        if (triquad_order < 0) {
-          const Real
-            L = std::max(xbs[ix+1] - xbs[ix], ybs[iy+1] - ybs[iy]),
-            D = std::max(std::max(xbs[ix] - x, x - xbs[ix+1]),
-                         std::max(ybs[iy] - y, y - ybs[iy+1]));
-          triquad_order = acorn::get_triquad_order(L, D, 1e-16);
-        }
+      else
         acorn::integrals::calc_integral(poly, igs, sigma, triquad_order);
+      if (halfspace) {
+        igs.set_halfspace(true);
+        if (tri_quad) {
+          assert(triquad_order_hs > 0);
+          acorn::integrals::calc_integral(poly, igs, sigma, triquad_order_hs);
+        } else {
+          acorn::integrals::calc_integral_tensor_quadrature(
+            io, poly, igs, rcv, not hfp, sigma);
+        }
       }
     }
   {

@@ -1,10 +1,8 @@
 #ifndef INCLUDE_WOODLAND_EXAMPLES_CONVZX_GALLERY
 #define INCLUDE_WOODLAND_EXAMPLES_CONVZX_GALLERY
 
-#include "woodland/examples/convzx/convzx.hpp"
-
-#include <memory>
-#include <vector>
+#include "woodland/examples/convzx/discretization.hpp"
+#include "woodland/examples/convzx/exact.hpp"
 
 namespace woodland {
 namespace examples {
@@ -16,7 +14,7 @@ struct ZxFn {
   typedef std::shared_ptr<ZxFn> Ptr;
   typedef std::shared_ptr<const ZxFn> CPtr;
   
-  enum class Shape { zero, ramp, quadratic, trig0, trig1 };
+  enum class Shape : int { zero = 0, ramp, quadratic, trig0, trig1 };
 
   static Shape convert(const std::string& shape);
   static std::string convert(const Shape shape);
@@ -39,6 +37,8 @@ struct ZxFn {
   
   CRPtr get_xbs () const { return xs.data(); }
   CRPtr get_zbs () const { return zs.data(); }
+
+  static int unittest();
 
 private:
   const Shape shape;

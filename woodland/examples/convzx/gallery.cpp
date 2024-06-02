@@ -41,27 +41,27 @@ void eval (const ZxFn::Shape shape, const Real x, Real& f, Real& g) {
   switch (shape) {
   case ZxFn::Shape::ramp: {
     const Real a = 0.1;
-    f = a*x;
+    f = a*x - 0.11;
     g = a;
   } break;
   case ZxFn::Shape::quadratic: {
     const Real a = 1.2;
-    f = a*x*(1 - x);
+    f = a*x*(1 - x) - 0.33;
     g = a*(1 - 2*x);
   } break;
   case ZxFn::Shape::trig0: {
     const Real a = 0.15, b = 2*M_PI;
-    f = a*(1 + std::cos(b*(x - 0.5)));
+    f = a*(1 + std::cos(b*(x - 0.5))) - 0.33;
     g = -a*b*std::sin(b*(x - 0.5));
   } break;
   case ZxFn::Shape::trig1: {
     const Real a = 0.3, b = 2*M_PI;
-    f = a*x*std::sin(b*x);
+    f = a*x*std::sin(b*x) - 0.12;
     g = a*(std::sin(b*x) + x*b*std::cos(b*x));
   } break;
   case ZxFn::Shape::zero:
   default:
-    f = 0; g = 0; break;
+    f = -0.1; g = 0; break;
   }
 }
 
@@ -96,7 +96,7 @@ struct ArclengthFn : public s1d::Fn {
     resid_x = std::sqrt(1 + g*g);
   }
 
-public:
+private:
   ZxFn::Shape shape;
   Real Ltgt;
 };
@@ -106,13 +106,9 @@ static void print (const s1d::Info& i) {
          i.x, i.f, i.fp, i.neval, i.nbisect, i.result);
 }
 
-void ZxFn::set_nx (int nx) {
-  assert(nx > 1);
-
-  // Set ny to make roughly uniform squares.
-  const auto L = calc_arclength(1);
-  ny = std::max(1, int(std::floor(nx/L)));
-
+static void
+calc_points_by_arclength (const ZxFn::Shape shape, const int nx, const Real L,
+                          std::vector<Real>& xs, std::vector<Real>& zs) {
   // Solve for each x in xs to make the arc length difference uniform.
   xs.resize(nx+1);
   xs[0] = 0;
@@ -141,6 +137,16 @@ void ZxFn::set_nx (int nx) {
     Real unused;
     eval(shape, xs[i], zs[i], unused);
   }
+}
+
+void ZxFn::set_nx (int nx) {
+  assert(nx > 1);
+
+  // Set ny to make roughly uniform squares.
+  const auto L = calc_arclength(1);
+  ny = std::max(1, int(std::floor(nx/L)));
+
+  calc_points_by_arclength(shape, nx, L, xs, zs);
 }
 
 void ZxFn::set_ny (int ny_) { ny = ny_; }
@@ -247,6 +253,53 @@ bool Disloc::is_boundary_zero (const Real threshold) const {
   for (int i = 0; i <= n; ++i) if (f(1, Real(i)/n)) return false;
 
   return true;
+}
+
+static int test_arclength () {
+  int nerr = 0;
+  ZxFn zxfn(ZxFn::Shape::trig1);
+  const auto shape = zxfn.get_shape();
+  const Real xend = 0.7;
+  const auto L = zxfn.calc_arclength(xend);
+  const int n = 100;
+  Real Lsum = 0, xprev = 0, fprev = 0;
+  for (int i = 0; i <= n; ++i) {
+    const Real x = xend*Real(i)/n;
+    Real f, g;
+    eval(shape, x, f, g);
+    if (i > 0)
+      Lsum += std::sqrt(acorn::square(x - xprev) + acorn::square(f - fprev));
+    xprev = x;
+    fprev = f;
+  }
+  if (std::abs(L - Lsum) > 1e-4*Lsum) ++nerr;
+  if (nerr) printf("convtest_zx: test_arclength failed\n");
+  return nerr;
+}
+
+static int test_zxfn () {
+  int nerr = 0;
+  ZxFn zxfn(ZxFn::Shape::trig1);
+  const int nx = 274;
+  zxfn.set_nx(nx);
+  const auto xs = zxfn.get_xbs();
+  const auto zs = zxfn.get_zbs();
+  Real segmin = 1, segmax = 0;
+  for (int i = 0; i < nx; ++i) {
+    const Real seg = std::sqrt(acorn::square(xs[i+1] - xs[i]) +
+                               acorn::square(zs[i+1] - zs[i]));
+    segmin = std::min(segmin, seg);
+    segmax = std::max(segmax, seg);
+  }
+  if (segmax - segmin > 1e-3*segmax) ++nerr;
+  if (nerr) printf("convtest_zx: test_zxfn failed\n");
+  return nerr;  
+}
+
+int ZxFn::unittest () {
+  const int nerr = test_arclength() + test_zxfn();
+  if (nerr) printf("ZxFn::unittest failed\n");
+  return nerr;
 }
 
 } // namespace gallery

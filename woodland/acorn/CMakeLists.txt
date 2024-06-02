@@ -4,7 +4,11 @@ set(WOODLAND_ACORN_SRCS
   elastostatics.cpp
   elastostatics_integrals.cpp
   fs3d.cpp
-  fs3d_sigma_Tx81.cpp
+  fs3d_sigma_znml.cpp
+  hs3d.cpp
+  hs3d_sigma_A.cpp
+  hs3d_sigma_B.cpp
+  hs3d_sigma_C.cpp
   hfp.cpp
   interaction_integrals.cpp
   linalg.cpp
@@ -26,6 +30,7 @@ set(WOODLAND_ACORN_HEADERS
   elastostatics.hpp
   elastostatics_integrals.hpp
   fs3d.hpp
+  hs3d.hpp
   hfp.hpp
   interaction_integrals.hpp
   linalg.hpp
@@ -40,8 +45,9 @@ set(WOODLAND_ACORN_HEADERS
   vectorization.hpp
   vv.hpp)
 
-option(WOODLAND_ACORN_VECTORIZE "Enable vectorization." OFF)
-set(WOODLAND_ACORN_PACK_N 4 CACHE STRING "Pack size for vectorization.")
+# Not currently supported:
+#   option(WOODLAND_ACORN_VECTORIZE "Enable vectorization." OFF)
+#   set(WOODLAND_ACORN_PACK_N 4 CACHE STRING "Pack size for vectorization.")
 
 set(WOODLAND_ACORN_DC3D_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../extern/dc3d.f")
 if (EXISTS ${WOODLAND_ACORN_DC3D_SRC})

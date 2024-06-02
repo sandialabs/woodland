@@ -4,10 +4,12 @@
 #include "woodland/examples/convzx/discretization.hpp"
 #include "woodland/examples/convzx/exact.hpp"
 #include "woodland/examples/convzx/gallery.hpp"
+#include "woodland/examples/convzx/convtest_zx_surface.hpp"
 
 namespace woodland {
 namespace examples {
 namespace convzx {
+
 
 using gallery::ZxFn;
 using gallery::Disloc;
@@ -50,6 +52,7 @@ struct ConvTest {
   void set_use_four_tris_per_rect(const bool use);
   void set_use_surface_recon(const bool use);
   void set_use_exact_normals(const bool use);
+  void set_use_halfspace(const bool use);
   //     2, 4
   void set_normal_recon_order(const int order);
   //     0, 1, 2, 3
@@ -67,6 +70,7 @@ struct ConvTest {
   // Make sure general (lam,mu) work.
   Real get_lam () const { return lam; }
   Real get_mu () const { return mu; }
+  bool get_use_halfspace () const { return use_halfspace; }
   // nx, ny are the number of rectangles in each dimension.
   int get_nx () const { return zxfn->get_nx(); }
   int get_ny () const { return zxfn->get_ny(); }
@@ -130,14 +134,13 @@ struct ConvTest {
   void eval_exact_at_rect_ctrs(const int nx, const int ny, RealArray& sigmas,
                                Exact::Options* o = nullptr);
 
-  static int unittest();
-
 private:
   Real lam = 1, mu = 1;
   int ntri_per_rect = 2;
   bool use_surface_recon = true;
   bool use_exact_normals = false;
   bool use_flat_elements = false;
+  bool use_halfspace = false;
   int nml_recon_order = 4;
   int disloc_order = 2;
   bool use_woodland_rg0c0 = false;
@@ -164,6 +167,7 @@ private:
 public: // for unit tests
   void discretize();
   static int test_interp();
+  static int unittest();
 
   static Triangulation::Ptr
   triangulate(const ZxFn& zxfn, const int ntri_per_rect = 2);
@@ -192,6 +196,7 @@ public: // for external implementations
 void run_case(const std::string& params);
 void convtest_w_vs_e(const std::string& params);
 void convtest_o_vs_e(const std::string& params);
+
 
 } // namespace convzx
 } // namespace examples

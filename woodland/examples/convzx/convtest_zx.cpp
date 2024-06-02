@@ -15,6 +15,7 @@ namespace woodland {
 namespace examples {
 namespace convzx {
 
+
 typedef acorn::Matvec<2,Real> mv2;
 typedef acorn::Matvec<3,Real> mv3;
 
@@ -74,6 +75,10 @@ void ConvTest::set_use_exact_normals (const bool use) {
   use_exact_normals = use;
 }
 
+void ConvTest::set_use_halfspace (const bool use) {
+  use_halfspace = use;
+}
+
 void ConvTest::set_hmmvp_tol (const Real tol) {
   hmmvp_tol = tol;
 }
@@ -105,7 +110,8 @@ void ConvTest::set_use_woodland_rg0c0 (const bool use) {
 }
 
 void ConvTest::print (FILE* fp) const {
-  fprintf(fp, "ct> lam %1.3e mu %1.3e\n", lam, mu);
+  fprintf(fp, "ct> lam %1.3e mu %1.3e halfspace %d\n",
+          lam, mu, int(use_halfspace));
   fprintf(fp, "ct> ntriperrect %d dislocorder %d exactsrf %d flatelem %d"
           " exactnml %d nmlorder %d\n",
           ntri_per_rect, disloc_order, int(not use_surface_recon),
@@ -312,9 +318,9 @@ pywrite_zxfn (const std::string& python_filename, const ZxFn& zxfn,
   fprintf(fp, "%s['type'] = 'zxfn'\n", dict.c_str());
   fprintf(fp, "%s['nx'] = %d\n", dict.c_str(), zxfn.get_nx());
   std::string ddi = dict + "['x']";
-  pywrite_double_array(fp, ddi, 1, zxfn.get_nx(), zxfn.get_xbs());
+  pywrite_double_array(fp, ddi, 1, zxfn.get_nx()+1, zxfn.get_xbs());
   ddi = dict + "['z']";
-  pywrite_double_array(fp, ddi, 1, zxfn.get_nx(), zxfn.get_zbs());
+  pywrite_double_array(fp, ddi, 1, zxfn.get_nx()+1, zxfn.get_zbs());
   fclose(fp);
 }
 
@@ -510,11 +516,13 @@ struct ConvTestSettings {
   bool use_surface_recon = true;
   bool use_flat_elements = false;
   bool use_exact_normals = false;
+  bool use_woodland_rg0c0 = false;
+  bool use_halfspace = false;
   int nml_recon_order = 4;
   int disloc_order = 2;
   int e_max = -1;
   Real r = 0.8;
-  bool use_woodland_rg0c0 = false;
+  int ny_override = -1;
 
   void set(const std::string& params);
 };
@@ -523,12 +531,27 @@ static bool in (const std::string sub, const std::string sup) {
   return sup.find(sub) != std::string::npos;
 }
 
+static void print_valid_pairs () {
+  printf("Valid pairs:\n"
+         "  testcase: int [0]\n"
+         "  ntri: 2, 4 [2]\n"
+         "  srfrecon: bool (0,1) [1]\n"
+         "  flatelem: bool [0]\n"
+         "  exactnml: bool [0]\n"
+         "  nmlorder: 2, 4 [4]\n"
+         "  dislocorder: 0, 1, 2, 3 [2]\n"
+         "  nres: int > 0 [-1]\n"
+         "  woodlandrect: bool [0]\n"
+         "  halfspace: bool [0]\n");
+}
+
 void ConvTestSettings::set (const std::string& params) {
   const auto toks = acorn::split(params, ",");
   for (const auto& t : toks) {
     const auto keyval = acorn::split(t, "=");
     if (keyval.size() != 2) {
       printf("Token error: %s\n", t.c_str());
+      print_valid_pairs();
       exit(-1);
     }
     const auto& key = keyval[0];
@@ -543,19 +566,13 @@ void ConvTestSettings::set (const std::string& params) {
     else if (in("dislocorder", key)) disloc_order = ival;
     else if (in("nres", key)) e_max = ival - 1;
     else if (in("woodlandrect", key)) use_woodland_rg0c0 = ival;
+    else if (in("halfspace", key)) use_halfspace = ival;
+    // Unadvertised debug option with unspecified behavior.
+    else if (in("nyoverride", key)) ny_override = ival;
     else {
       printf("Unrecognized key-value pair: %s %s\n",
              keyval[0].c_str(), keyval[1].c_str());
-      printf("Valid pairs:\n"
-             "  testcase: int [0]\n"
-             "  ntri: 2, 4 [2]\n"
-             "  srfrecon: bool (0,1) [1]\n"
-             "  flatelem: bool [0]\n"
-             "  exactnml: bool [0]\n"
-             "  nmlorder: 2, 4 [4]\n"
-             "  dislocorder: 0, 1, 2, 3 [2]\n"
-             "  nres: int > 0 [-1]\n"
-             "  woodlandrect: bool [0]\n");
+      print_valid_pairs();
       exit(-1);
     }
   }
@@ -574,10 +591,11 @@ void set_settings (const ConvTestSettings& s, ConvTest& ct) {
   ct.set_use_surface_recon(s.use_surface_recon);
   ct.set_use_exact_normals(s.use_exact_normals);
   ct.set_use_flat_elements(s.use_flat_elements);
+  ct.set_use_woodland_rg0c0(s.use_woodland_rg0c0);
+  ct.set_use_halfspace(s.use_halfspace);
   ct.set_normal_recon_order(s.nml_recon_order);
   ct.set_disloc_order(s.disloc_order);
   ct.set_general_lam_mu();
-  ct.set_use_woodland_rg0c0(s.use_woodland_rg0c0);
 }
 
 } // namespace
@@ -596,6 +614,7 @@ static void conv_test_exact (const bool my_method, const ConvTestSettings& s) {
   const int nxfac = 10;
   int ny0 = 0;
   Real l2ep[6], liep[6];
+  Real t_accum[2] = {0};
   for (int e = 0; e <= e_max; ++e) {
     const bool last = e == e_max;
     const bool output = last;
@@ -604,12 +623,16 @@ static void conv_test_exact (const bool my_method, const ConvTestSettings& s) {
 
     ct.set_nx(nx);
     if (e == 0) ny0 = ct.get_ny();
-    const int ny = ny0*resfac;
+    const int ny = s.ny_override > 0 ? s.ny_override : ny0*resfac;
     printf("nx ny %d %d\n", nx, ny);
     RealArray dislocs, sigmas, esigmas;
+    Real t0, t1, t2;
     if (my_method) {
+      t0 = acorn::dbg::gettime();
       ct.eval(dislocs, sigmas);
+      t1 = acorn::dbg::gettime();
       ct.eval_exact_at_tri_ctrs(esigmas);
+      t2 = acorn::dbg::gettime();
       if (0) {
         // Test that e vs e with different configs can get very accurate
         // agreement.
@@ -628,10 +651,18 @@ static void conv_test_exact (const bool my_method, const ConvTestSettings& s) {
       }
     } else {
       int iny = ny;
+      t0 = acorn::dbg::gettime();
       ct.eval_okada(nx, iny, dislocs, sigmas);
+      t1 = acorn::dbg::gettime();
       assert(iny == ny);
       ct.eval_exact_at_rect_ctrs(nx, ny, esigmas);
+      t2 = acorn::dbg::gettime();
     }
+
+    t_accum[0] += t1 - t0;
+    t_accum[1] += t2 - t1;
+    printf("t: method %1.2e (%1.2e) exact %1.2e (%1.2e)\n",
+           t1 - t0, t_accum[0], t2 - t1, t_accum[1]);
 
     Real l2_err[6], li_err[6];
     calc_errors(esigmas, sigmas, l2_err, li_err,
@@ -650,8 +681,7 @@ static void conv_test_exact (const bool my_method, const ConvTestSettings& s) {
         ozxfn.set_nx(nx);
         ct.pywrite_okada("ctzx_rect.py", nx, ny, dislocs, sigmas, "d", false);
         pywrite_zxfn("ctzx_rect.py", ozxfn, "z", true);
-        ct.pywrite_okada("ctzx_rect_exact.py", nx, ny, dislocs, esigmas, "d",
-                         false);
+        ct.pywrite_okada("ctzx_rect_exact.py", nx, ny, dislocs, esigmas, "d", false);
         pywrite_zxfn("ctzx_rect_exact.py", ozxfn, "z", true);
       }
     }
@@ -754,47 +784,6 @@ void run_case (const std::string& params) {
       print_errors(l2_err, nullptr, li_err, nullptr);
     }
   }
-}
-
-static int test_arclength () {
-  int nerr = 0;
-  ZxFn zxfn(ZxFn::Shape::trig1);
-  const auto shape = zxfn.get_shape();
-  const Real xend = 0.7;
-  const auto L = zxfn.calc_arclength(xend);
-  const int n = 100;
-  Real Lsum = 0, xprev = 0, fprev = 0;
-  for (int i = 0; i <= n; ++i) {
-    const Real x = xend*Real(i)/n;
-    Real f, g;
-    eval(shape, x, f, g);
-    if (i > 0)
-      Lsum += std::sqrt(acorn::square(x - xprev) + acorn::square(f - fprev));
-    xprev = x;
-    fprev = f;
-  }
-  if (std::abs(L - Lsum) > 1e-4*Lsum) ++nerr;
-  if (nerr) printf("convtest_zx: test_arclength failed\n");
-  return nerr;
-}
-
-static int test_zxfn () {
-  int nerr = 0;
-  ZxFn zxfn(ZxFn::Shape::trig1);
-  const int nx = 274;
-  zxfn.set_nx(nx);
-  const auto xs = zxfn.get_xbs();
-  const auto zs = zxfn.get_zbs();
-  Real segmin = 1, segmax = 0;
-  for (int i = 0; i < nx; ++i) {
-    const Real seg = std::sqrt(acorn::square(xs[i+1] - xs[i]) +
-                               acorn::square(zs[i+1] - zs[i]));
-    segmin = std::min(segmin, seg);
-    segmax = std::max(segmax, seg);
-  }
-  if (segmax - segmin > 1e-3*segmax) ++nerr;
-  if (nerr) printf("convtest_zx: test_zxfn failed\n");
-  return nerr;  
 }
 
 static Real testfn(const int fno, const Real x, const Real y) {
@@ -954,11 +943,11 @@ static int test_fast_woodland_methods () {
   ct.set_use_surface_recon(0);
   ct.set_use_exact_normals(1);
   ct.set_disloc_order(2);
-  printf("test_fast_woodland_methods: skipping order 3 b/c too expensive\n");
 
   for (const bool use_four : {false, true}) {
     ct.set_use_four_tris_per_rect(use_four);
     ct.set_nx(use_four ? 5 : 6);
+    ct.set_use_halfspace(not use_four);
 
     RealArray dd, sd, df, sf, se;
     const auto t0 = acorn::dbg::gettime();
@@ -993,8 +982,7 @@ static int test_fast_woodland_methods () {
 int ConvTest::unittest () {
   const auto t0 = acorn::dbg::gettime();
   int nerr = 0;
-  nerr += test_arclength();
-  nerr += test_zxfn();
+  nerr += ZxFn::unittest();
   nerr += ExtrudedCubicSplineSurface::unittest();
   nerr += FlatElementSurface::unittest();
   nerr += ConvTest::test_interp();
@@ -1005,6 +993,7 @@ int ConvTest::unittest () {
   printf("convzx::unittest et %1.2e\n", t1 - t0);
   return nerr;
 }
+
 
 } // namespace convzx
 } // namespace examples

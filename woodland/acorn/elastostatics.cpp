@@ -14,14 +14,17 @@ void call_okada (const bool fullspace, const bool point, const Real lam,
   typedef Matvec<3,Real> mv3;
   const auto alpha = acorn::lambda_mu_to_alpha(lam, mu);
   for (int i = 0; i < n; ++i) {
-    const Real* nml = &nmls[3*i];
+    const Real* const nml = &nmls[3*i];
+    const Real* const src = &srcs[3*i];
+    const Real* const rcv = &rcvs[3*i];
+    const Real* const disloc = &dislocs[3*i];
     assert(std::abs(mv3::norm22(nml) - 1) <= std::sqrt(mv3::eps));
     const Real base = std::sqrt(square(nml[0]) + square(nml[1]));
     Real dipdeg = (180/M_PI)*atan2(nml[2], base);
     dipdeg = 90 - dipdeg;
     // Obs z <= 0 but depth is expressed as >= 0.
     Real p[3], depth;
-    mv3::subtract(&rcvs[3*i], &srcs[3*i], p);
+    mv3::subtract(rcv, src, p);
     if (fullspace) {
       if (p[2] <= 0)
         depth = 0;
@@ -30,10 +33,9 @@ void call_okada (const bool fullspace, const bool point, const Real lam,
         p[2] = 0;
       }
     } else {
-      depth = -srcs[2];
-      p[2] = rcvs[3*i+2];
+      depth = -src[2];
+      p[2] = rcv[2];
     }
-    const Real* disloc = &dislocs[3*i];
     Real pot[3]; // strike, dip, tensile;
     Real along_strike[3], along_dip[3], nml_strike[3];
     const Real z[] = {0,0,1};
@@ -75,7 +77,7 @@ void call_okada (const bool fullspace, const bool point, const Real lam,
       if (iret != 0) printf("okada::dc3d returned %d\n", iret);
       assert(iret == 0);
     }
-    Real* s = &sigmas[6*i];
+    Real* const s = &sigmas[6*i];
     acorn::du_to_tau(lam, mu, du, s);
     if ( ! up)
       rotate_sym_tensor_3x3_RtAR(along_strike, nml_strike, z, s);

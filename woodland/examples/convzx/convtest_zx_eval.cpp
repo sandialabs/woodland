@@ -1,6 +1,7 @@
 #include "woodland/acorn/matvec.hpp"
 #include "woodland/acorn/util.hpp"
 #include "woodland/acorn/fs3d.hpp"
+#include "woodland/acorn/hs3d.hpp"
 #include "woodland/acorn/dbg.hpp"
 
 #include "woodland/examples/convzx/convtest_zx.hpp"
@@ -8,11 +9,12 @@
 
 #include <set>
 
-#define USE_CALC_INTEGRAL_TENSOR_QUADRATURE
+static const bool use_calc_integral_tensor_quadrature = true;
 
 namespace woodland {
 namespace examples {
 namespace convzx {
+
 
 typedef acorn::Matvec<3,Real> mv3;
 
@@ -81,12 +83,13 @@ void ConvTest::eval (RealArray& dislocs, RealArray& sigmas,
 void ConvTest::eval_direct (const RealArray& dislocs, RealArray& sigmas) const {
   Stress::Options o;
   o.hfp_dist_fac = 0;
-#ifdef USE_CALC_INTEGRAL_TENSOR_QUADRATURE
+  o.halfspace = use_halfspace;
   Stress::Options o1 = o;
-  o1.qp.np_radial = 40;
-  o1.qp.np_angular = 40;
-  o1.use_calc_integral_tensor_quadrature = true;
-#endif
+  if (use_calc_integral_tensor_quadrature) {
+    o1.qp.np_radial = 40;
+    o1.qp.np_angular = 40;
+    o1.use_calc_integral_tensor_quadrature = true;
+  }
 
   const auto& t = *d->get_triangulation();
   const auto& tr = *d->get_triangulation_relations();
@@ -107,11 +110,10 @@ void ConvTest::eval_direct (const RealArray& dislocs, RealArray& sigmas) const {
     for (Idx is = 0; is < ncell; ++is) {
       Real s[6];
       const bool nbrs = are_nbrs(tr, ir, is);
-#ifdef USE_CALC_INTEGRAL_TENSOR_QUADRATURE
-      stress.calc_s1_r1(lam, mu, is, ir, is == ir, s, nbrs ? o1 : o);
-#else
-      stress.calc_s1_r1(lam, mu, is, ir, is == ir || nbrs, s, o);
-#endif
+      if (use_calc_integral_tensor_quadrature)
+        stress.calc_s1_r1(lam, mu, is, ir, is == ir, s, nbrs ? o1 : o);
+      else
+        stress.calc_s1_r1(lam, mu, is, ir, is == ir || nbrs, s, o);
       for (int i = 0; i < 6; ++i) sigma[i] += s[i];
     }
     Real lcs[9];
@@ -160,12 +162,13 @@ void ConvTest::eval_fast (const RealArray& dislocs, RealArray& sigmas) const {
   // Use nbr relations rather than geometry to determine when to call calc_hfp
   // on other-interactions.
   options.hfp_dist_fac = 0;
-#ifdef USE_CALC_INTEGRAL_TENSOR_QUADRATURE
+  options.halfspace = use_halfspace;
   Stress::Options o1 = options;
-  o1.qp.np_radial = 40;
-  o1.qp.np_angular = 40;
-  o1.use_calc_integral_tensor_quadrature = true;
-#endif
+  if (use_calc_integral_tensor_quadrature) {
+    o1.qp.np_radial = 40;
+    o1.qp.np_angular = 40;
+    o1.use_calc_integral_tensor_quadrature = true;
+  }
 
   sigmas.clear();
   sigmas.resize(6*ntri, 0);
@@ -212,15 +215,12 @@ void ConvTest::eval_fast (const RealArray& dislocs, RealArray& sigmas) const {
               if (ic == 0) disloc[id] = 1;
               else coef[id*Discretization::reconstruct_ncoef + ic - 1] = 1;
               Real s[6];
-#ifdef USE_CALC_INTEGRAL_TENSOR_QUADRATURE
-              // Use tensor quadrature for adjacent-element other-
-              // interactions. To switch to using calc_hfp, hfp -> hfp || nbrs.
-              stress.calc_s1_r1(disloc, coef, lam, mu, is, ir, hfp, s,
-                                nbrs ? o1 : options);
-#else
-              stress.calc_s1_r1(disloc, coef, lam, mu, is, ir, hfp || nbrs, s,
-                                options);
-#endif
+              if (use_calc_integral_tensor_quadrature)
+                stress.calc_s1_r1(disloc, coef, lam, mu, is, ir, hfp, s,
+                                  nbrs ? o1 : options);
+              else
+                stress.calc_s1_r1(disloc, coef, lam, mu, is, ir, hfp || nbrs, s,
+                                  options);
               acorn::rotate_sym_tensor_3x3_RARt(lcs, s);
               acorn::copy(6, s,
                           &gfs[6*(ncoef_per_dim*(3*(nyrect-1 + smr) + id) + ic)]);
@@ -413,6 +413,7 @@ void ConvTest
       // Get geometry data for each src in this src y-strip.
       Real src[3], snml[3], slengths[2], sxhat[3];
       calc_rect_ctr(zxfno, nyr, ix, src, snml, slengths);
+      std::swap(slengths[0], slengths[1]); // see [yhat] comment below
       mv3::cross(yhat, snml, sxhat);
 
       // Compute Green's functions.
@@ -427,13 +428,9 @@ void ConvTest
           disloc[id] = 1;
           Real dglbl[3], s[6];
           acorn::tmatvec(sxhat, yhat, snml, disloc, dglbl);
-          if (use_woodland_rg0c0)
-            acorn::fs3d::calc_sigma_const_disloc_rect(
-              lam, mu, src, snml, sxhat, slengths, dglbl, rcv, s,
-              20, 20);
-          else
-            acorn::fs3d::calc_sigma_const_disloc_rect_okada(
-              lam, mu, src, snml, sxhat, slengths, dglbl, rcv, s);
+          acorn::hs3d::calc_sigma_const_disloc_rect(
+            lam, mu, src, snml, yhat, slengths, dglbl, rcv, s,
+            use_halfspace, not use_woodland_rg0c0, 20, 20);
           acorn::rotate_sym_tensor_3x3_RARt(rxhat, yhat, rnml, s);
           acorn::copy(6, s, &gfs[6*(3*iy + id)]);
           disloc[id] = 0;
@@ -474,6 +471,7 @@ void ConvTest
 void ConvTest
 ::eval_okada_hmmvp (const int nxr, int& nyr, RealArray& dislocs,
                     RealArray& sigmas) const {
+  throw_if(use_halfspace, "eval_okada_hmmvp: halfspace not impl'ed");
   ZxFn zxfno(zxfn->get_shape());
   zxfno.set_nx(nxr);
   if (nyr < 1) nyr = zxfno.get_ny();
@@ -533,13 +531,13 @@ void ConvTest
       calc_rect_ctr(zxfno, nyr, is, src, nml, lengths);
       mv3::cross(yhat, nml, xhat);
       acorn::tmatvec(xhat, yhat, nml, &dislocs[3*is], dglbl);
-      if (use_woodland_rg0c0)
-        acorn::fs3d::calc_sigma_const_disloc_rect(
-          lam, mu, src, nml, xhat, lengths, dglbl, rcv, s,
-          20, 20);
-      else
-        acorn::fs3d::calc_sigma_const_disloc_rect_okada(
-          lam, mu, src, nml, xhat, lengths, dglbl, rcv, s);
+      // [yhat] To handle the halfspace case with Okada's code, need the yhat
+      // direction, which is horizontal, to be the "strike" direction. Swap
+      // lengths to accommodate this.
+      std::swap(lengths[0], lengths[1]);
+      acorn::hs3d::calc_sigma_const_disloc_rect(
+        lam, mu, src, nml, yhat, lengths, dglbl, rcv, s,
+        use_halfspace, not use_woodland_rg0c0, 20, 20);
       for (int i = 0; i < 6; ++i) sigma[i] += s[i];
     }
     Real xhat[3];
@@ -723,6 +721,7 @@ void ConvTest::interp_okada_to_okada (
                          &sigmas_dst[6*ir]);
   }
 }
+
 
 } // namespace convzx
 } // namespace examples

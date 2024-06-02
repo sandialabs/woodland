@@ -43,6 +43,8 @@ struct Exact {
   // Default is 1, 1.
   void set_lam_mu(const Real lam, const Real mu);
 
+  void set_halfspace(const bool is_halfspace);
+
   void set_options(const Options& o);
 
   void calc_stress(const Real x, const Real y, Real sigma_lcs[6]) const;
@@ -55,6 +57,7 @@ private:
   Description::CPtr d;
   Options o;
   Real lam = 1, mu = 1;
+  bool halfspace = false;
 };
 
 } // namespace convzx

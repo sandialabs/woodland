@@ -523,7 +523,7 @@ int test_area (const Polygon& p, const Pt cc) {
     Real pin[2] = {0};
     for (int i = 0; i < p.n; ++i)
       mv2::axpy(1, &p.xys[2*i], pin);
-    mv2::scale(1.0/p.n, pin);
+    mv2::divide(p.n, pin);
     for (int i = 0; i < p.n; ++i)
       area_true += Triangle2D::calc_signed_area(pin, &p.xys[2*i],
                                                 &p.xys[2*((i+1) % p.n)]);

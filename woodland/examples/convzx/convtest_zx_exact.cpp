@@ -6,6 +6,7 @@ namespace woodland {
 namespace examples {
 namespace convzx {
 
+
 typedef acorn::Matvec<3,Real> mv3;
 
 struct ExactData : public Exact::Description {
@@ -56,6 +57,7 @@ static void setup (ConvTest& ct, Exact::Ptr& exact, Exact::Options* co) {
     ct.get_zxfn()->get_shape(), ct.get_disloc());
   exact->init(description);
   exact->set_lam_mu(ct.get_lam(), ct.get_mu());
+  exact->set_halfspace(ct.get_use_halfspace());
 
   if (co)
     exact->set_options(*co);
@@ -107,6 +109,7 @@ void ConvTest
   }
   if (verbosity > 0) printf("\n");
 }
+
 
 } // namespace convzx
 } // namespace examples

@@ -85,7 +85,8 @@ void calc_sigma_const_disloc_rect (
   const Real tangent[3], const Real xy_side_lens[2], const Real disloc[3],
   const Real rcv[3], Real sigma[6],
   const int np_radial, const int np_angular,
-  int triquad_order, const Real triquad_tol)
+  int triquad_order, const Real triquad_tol,
+  RectInfo* info)
 {
   using namespace acorn;
   integrals::Options io;
@@ -99,12 +100,19 @@ void calc_sigma_const_disloc_rect (
   Real dist[2];
   rcv_distance(xy_side_lens, f, dist);
   const Real L = std::max(hx, hy);
-  if (dist[1] < 1e-4*L && dist[0] < L)
+  const bool hfp = dist[1] < 1e-4*L && dist[0] < L;
+  if (hfp)
     integrals::calc_hfp(io, p, f.get_singular_point(), f, sigma);
   else {
     if (triquad_order <= 0)
       triquad_order = get_triquad_order(L, dist[0], triquad_tol);
     integrals::calc_integral(p, f, sigma, triquad_order);
+  }
+  if (info) {
+    info->hfp = hfp;
+    info->L = L;
+    mv2::copy(dist, info->dist);
+    info->triquad_order = triquad_order;
   }
 }
 
@@ -170,12 +178,45 @@ bool time_calc_sigma_point (const int n, const bool verbose) {
 // tests the routine more extensively.
 int unittest () {
   int ne = 0;
-  const Real lam = 1, mu = 1, src[] = {0,0,0}, nml[] = {0,0,1},
-    tangent[] = {1,0,0}, xy_side_lens[] = {1,1}, disloc[] = {1,1,1},
-    rcv[] = {0,0,0};
-  Real sigma[6];
-  calc_sigma_const_disloc_rect(lam, mu, src, nml, tangent, xy_side_lens, disloc,
-                               rcv, sigma);
+  {
+#ifndef WOODLAND_ACORN_HAVE_DC3D
+    printf("fs3d::unittest: Because extern/dc3d.f is not available, "
+           "this unit test will purposely fail.\n");
+#endif
+    const Real lam = 1, mu = 1.1;
+    const Real src[] = {0, 0, -0.2}, rcv[] = {0.1, 0, -0.1},
+      disloc[] = {1, 1.5, 0.3};
+    for (const Real n3 : {1.0, 0.99, 1.01}) {
+      Real nml[] = {1, 0, n3};
+      mv3::normalize(nml);
+      const bool point = true;
+      Real sigma_o[6], sigma_me[6];
+      call_okada(true, point, lam, mu, 1, src, rcv, disloc, nml, nullptr,
+                 sigma_o);
+      fs3d::calc_sigma_point(lam, mu, src, nml, disloc, rcv, sigma_me);
+      Real num = 0, den = 0;
+      for (int i = 0; i < 6; ++i) {
+        num = std::max(num, std::abs(sigma_me[i] - sigma_o[i]));
+        den = std::max(den, std::abs(sigma_o[i]));
+      }
+      if (num > 100*mv3::eps*den) {
+#ifdef WOODLAND_ACORN_HAVE_DC3D
+        prc(num/den);
+        prarr("sigma_o",sigma_o,6);
+        prarr("sigma_m",sigma_me,6);
+#endif
+        ++ne;
+      }
+    }
+  }
+  {
+    const Real lam = 1, mu = 1, src[] = {0,0,0}, nml[] = {0,0,1},
+      tangent[] = {1,0,0}, xy_side_lens[] = {1,1}, disloc[] = {1,1,1},
+      rcv[] = {0,0,0};
+    Real sigma[6];
+    calc_sigma_const_disloc_rect(lam, mu, src, nml, tangent, xy_side_lens,
+                                 disloc, rcv, sigma);
+  }
   return ne;
 }
 
@@ -262,6 +303,97 @@ static void study_triquad_table () {
 void study_triquad () {
   study_triquad_table();
   //todo binary search
+}
+
+struct FigureIntegrands : public acorn::CallerIntegrands {
+  enum : int { ndisloc = 3, nsigma = 6 };
+
+  FigureIntegrands ()
+    : vtxs{-0.75,-0.75, 1.1,-1, 1,0.9, -0.6,0.4},
+      rcv{0,0}
+  {}
+
+  int nintegrands () const override { return nsigma; }
+
+  Real permitted_R_min (const Real R_max) const override {
+    return 1e-3*R_max;
+  }
+
+  CRPtr get_rcv () { return rcv; }
+
+  plane::Polygon get_polygon () const {
+    return plane::Polygon(vtxs, sizeof(vtxs)/sizeof(*vtxs)/2);
+  }
+
+  void eval (const int n, CRPtr xys_lcs, RPtr integrands) const override {
+    const Real lam = 1, mu = 1;
+    const Real disloc_lcs[] = {1,0,0};
+
+    Real rcv_gcs[3], lcs_rcv[9];
+    mv2::copy(rcv, rcv_gcs);
+    eval_shape(rcv[0], rcv[1], rcv_gcs[2]);
+    make_lcs(rcv[0], rcv[1], lcs_rcv);
+
+    for (int k = 0; k < n; ++k) {
+      Real src_gcs[3], src_grad[2], lcs_src[9];
+      mv2::copy(&xys_lcs[2*k], src_gcs);
+      eval_shape(src_gcs[0], src_gcs[1], src_gcs[2], src_grad);
+      make_lcs(src_gcs[0], src_gcs[1], lcs_src);
+      
+      Real disloc_gcs[3];
+      mv3::tmatvec(lcs_src, disloc_lcs, disloc_gcs);
+
+      const auto integrand = &integrands[nsigma*k];
+      acorn::fs3d::calc_sigma_point(lam, mu, src_gcs, &lcs_src[6],
+                                    disloc_gcs, rcv_gcs, integrand);
+
+      const Real jacdet = std::sqrt(1 + mv2::norm22(src_grad));
+      for (int i = 0; i < nsigma; ++i) integrand[i] *= jacdet;
+    }
+  }
+
+private:
+  const Real vtxs[8], rcv[2];
+
+  static void
+  eval_shape (const Real x, const Real y, Real& z, RPtr grad = nullptr) {
+    const Real a = 0.3;
+    z = a*(x*x + y*y);
+    if (grad) {
+      grad[0] = 2*a*x;
+      grad[1] = 2*a*y;
+    }
+  }
+
+  static void make_lcs (const Real x, const Real y, Real lcs[9]) {
+    const Real primary[] = {1,0,0};
+    Real z, grad[2];
+    eval_shape(x, y, z, grad);
+    Real zhat[] = {-grad[0], -grad[1], 1};
+    mv3::normalize(zhat);
+    Real yhat[3], xhat[3];
+    mv3::cross(zhat, primary, yhat);
+    mv3::normalize(yhat);
+    mv3::cross(yhat, zhat, xhat);
+    assert(std::abs(mv3::norm2(xhat) - 1) < 1e-13);
+    mv3::copy(xhat, lcs);
+    mv3::copy(yhat, lcs+3);
+    mv3::copy(zhat, lcs+6);
+  }
+};
+
+void make_figure_data () {
+#ifdef WOODLAND_ACORN_FIGURE
+  integrals::fig_init();
+  integrals::Options o;
+  o.np_radial = 20;
+  FigureIntegrands f;
+  Real hfps[6];
+  calc_hfp(o, f.get_polygon(), f.get_rcv(), f, hfps);
+  integrals::fig_fin();
+#else
+  printf("define WOODLAND_ACORN_FIGURE to enable\n");
+#endif
 }
 
 } // namespace fs3d

@@ -123,11 +123,11 @@ void form_rotation_3(const Real axis[3], const Real angle, Real R[9]);
 
 // For row-major R = [x; y; z] and T = [t11 t12 t13; t12 t22 t23; t13 t23 t33],
 // return R'T R.
-inline void
-rotate_sym_tensor_3x3_RtAR (const CRPtr x, const CRPtr y, const CRPtr z,
-                            Real& t11, Real& t12, Real& t13,
-                            Real& t22, Real& t23, Real& t33) {
-  const Real
+template <typename T> inline void
+rotate_sym_tensor_3x3_RtAR (const T* const x, const T* const y, const T* const z,
+                            T& t11, T& t12, T& t13,
+                            T& t22, T& t23, T& t33) {
+  const T
     f1 = t11*x[0] + t12*y[0] + t13*z[0],
     f2 = t12*x[0] + t22*y[0] + t23*z[0],
     f3 = t13*x[0] + t23*y[0] + t33*z[0],
@@ -145,24 +145,25 @@ rotate_sym_tensor_3x3_RtAR (const CRPtr x, const CRPtr y, const CRPtr z,
   t33 = x[2]*f7 + y[2]*f8 + z[2]*f9;
 }
 
-inline void
-rotate_sym_tensor_3x3_RtAR (const CRPtr x, const CRPtr y, const CRPtr z,
-                            RPtr t) {
+template <typename T> inline void
+rotate_sym_tensor_3x3_RtAR (const T* const x, const T* const y, const T* const z,
+                            T* const t) {
   rotate_sym_tensor_3x3_RtAR(x, y, z, t[0], t[1], t[2], t[3], t[4], t[5]);
 }
 
 // Row-major R.
-inline void rotate_sym_tensor_3x3_RtAR (const CRPtr R, RPtr t) {
+template <typename T> inline void
+rotate_sym_tensor_3x3_RtAR (const T* const R, T* const t) {
   rotate_sym_tensor_3x3_RtAR(R, R+3, R+6, t[0], t[1], t[2], t[3], t[4], t[5]);
 }
 
 // For row-major R = [x; y; z] and T = [t11 t12 t13; t12 t22 t23; t13 t23 t33],
 // return R T R'.
-inline void
-rotate_sym_tensor_3x3_RARt (const CRPtr x, const CRPtr y, const CRPtr z,
-                            Real& t11, Real& t12, Real& t13,
-                            Real& t22, Real& t23, Real& t33) {
-  const Real
+template <typename T> inline void
+rotate_sym_tensor_3x3_RARt (const T* const x, const T* const y, const T* const z,
+                            T& t11, T& t12, T& t13,
+                            T& t22, T& t23, T& t33) {
+  const T
     f1 = t11*x[0] + t12*x[1] + t13*x[2],
     f2 = t12*x[0] + t22*x[1] + t23*x[2],
     f3 = t13*x[0] + t23*x[1] + t33*x[2],
@@ -180,13 +181,14 @@ rotate_sym_tensor_3x3_RARt (const CRPtr x, const CRPtr y, const CRPtr z,
   t33 = z[0]*f7 + z[1]*f8 + z[2]*f9;
 }
 
-inline void
-rotate_sym_tensor_3x3_RARt (const CRPtr x, const CRPtr y, const CRPtr z,
-                            RPtr t) {
+template <typename T> inline void
+rotate_sym_tensor_3x3_RARt (const T* const x, const T* const y, const T* const z,
+                            T* const t) {
   rotate_sym_tensor_3x3_RARt(x, y, z, t[0], t[1], t[2], t[3], t[4], t[5]);
 }
 
-inline void rotate_sym_tensor_3x3_RARt (const CRPtr R, RPtr t) {
+template <typename T> inline void
+rotate_sym_tensor_3x3_RARt (const T* const R, T* const t) {
   rotate_sym_tensor_3x3_RARt(R, R+3, R+6, t[0], t[1], t[2], t[3], t[4], t[5]);
 }
 
@@ -214,12 +216,22 @@ void matvec (const Real x[3], const Real y[3], const Real z[3],
 void tmatvec (const Real x[3], const Real y[3], const Real z[3],
               const Real u[3], Real v[3]);
 
+// Form v so that |dot(u,v)|/(norm(u) norm(v)) <= sqrt(1/3).
+void form_separated_vector(const Real u[3], Real v[3]);
+
+// Form row-major R such that R(1,:) = normalize(x).
+void form_rotation_given_x(const Real x[3], Real R[9]);
+
+// Form row-major R such that R(1,:) = normalize(x) and R(2,:)'z = 0.
+void form_rotation_given_x_then_z(const Real x[3], const Real z[3], Real R[9]);
+
 std::vector<std::string> split(std::string s, const std::string& delim);
 
 struct Sprinter {
-  Sprinter (const int nbuf_ = 128) : n(0), nbuf(nbuf_), buf(nbuf) {}
+  Sprinter (const int nbuf_ = 128);
   void add(const char* format, ...);
-  void out(FILE* stream = stdout, const bool newline = true);
+  void out(FILE* stream = stdout, const bool newline = true) const;
+  std::string str() const;
 
 private:
   int n, nbuf;

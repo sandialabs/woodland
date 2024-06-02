@@ -14,6 +14,7 @@ namespace woodland {
 namespace examples {
 namespace convzx {
 
+
 #ifdef WOODLAND_HAVE_HMMVP
 
 using acorn::zero;
@@ -350,6 +351,7 @@ void ConvTest::Hmmvp
 {}
 
 #endif // WOODLAND_HAVE_HMMVP
+
 
 } // namespace convzx
 } // namespace examples

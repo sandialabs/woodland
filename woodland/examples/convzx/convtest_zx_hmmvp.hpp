@@ -8,6 +8,7 @@ namespace woodland {
 namespace examples {
 namespace convzx {
 
+
 struct ConvTest::Hmmvp {
   typedef std::shared_ptr<Hmmvp> Ptr;
   typedef std::shared_ptr<const Hmmvp> CPtr;
@@ -39,6 +40,7 @@ private:
   std::shared_ptr<OkadaData> od;
   std::shared_ptr<WoodlandData> wd;
 };
+
 
 } // namespace convzx
 } // namespace examples

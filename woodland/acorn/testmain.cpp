@@ -9,7 +9,7 @@ struct Command {
   enum Enum : int
     { unittest = 0, conv_test_flat_strip, conv_test_circle, conv_test_cylinder,
       conv_test_ellipse, conv_test_ellipse_cylinder, time_calc_sigma_point,
-      study_triquad, invalid };
+      study_triquad, fig_self_interaction, invalid };
   static Enum convert(const int i);
   static Enum convert(const std::string& e);
   static std::string convert(const Enum e);
@@ -31,6 +31,7 @@ Command::Enum Command::convert (const std::string& e) {
   if (e == "conv_test_ellipse_cylinder") return conv_test_ellipse_cylinder;
   if (e == "time_calc_sigma_point") return time_calc_sigma_point;
   if (e == "study_triquad") return study_triquad;
+  if (e == "fig_self_interaction") return fig_self_interaction;
   return invalid;
 }
 
@@ -44,6 +45,7 @@ std::string Command::convert (const Command::Enum e) {
   case conv_test_ellipse_cylinder: return "conv_test_ellipse_cylinder";
   case time_calc_sigma_point: return "time_calc_sigma_point";
   case study_triquad: return "study_triquad";
+  case fig_self_interaction: return "fig_self_interaction";
   case invalid:
   default: return "invalid";
   }
@@ -91,6 +93,9 @@ int main (int argc, char** argv) {
   } break;
   case Command::study_triquad: {
     fs3d::study_triquad();
+  } break;
+  case Command::fig_self_interaction: {
+    fs3d::make_figure_data();
   } break;
   case Command::invalid:
   default: {

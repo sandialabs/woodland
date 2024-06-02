@@ -1,19 +1,21 @@
 set(WOODLAND_ACORN_SRCS
+  bezier_cubic.cpp
   compose_quadrature.cpp
   compose_triquad.cpp
   elastostatics.cpp
   elastostatics_integrals.cpp
   fs3d.cpp
   fs3d_sigma_znml.cpp
+  hfp.cpp
   hs3d.cpp
   hs3d_sigma_A.cpp
   hs3d_sigma_B.cpp
   hs3d_sigma_C.cpp
-  hfp.cpp
   interaction_integrals.cpp
   linalg.cpp
   matvec.cpp
   plane_geometry.cpp
+  solver1d.cpp
   triangle.cpp
   unittest.cpp
   util.cpp
@@ -22,6 +24,7 @@ set(WOODLAND_ACORN_SRCS
 
 set(WOODLAND_ACORN_HEADERS
   acorn.hpp
+  bezier_cubic.hpp
   caller_integrand.hpp
   compose_lagrange_polynomial.hpp
   compose_quadrature.hpp
@@ -30,14 +33,15 @@ set(WOODLAND_ACORN_HEADERS
   elastostatics.hpp
   elastostatics_integrals.hpp
   fs3d.hpp
-  hs3d.hpp
   hfp.hpp
+  hs3d.hpp
   interaction_integrals.hpp
   linalg.hpp
   macros.hpp
   matvec.hpp
   openmp.hpp
   plane_geometry.hpp
+  solver1d.hpp
   triangle.hpp
   types.hpp
   unittest.hpp

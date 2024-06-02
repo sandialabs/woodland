@@ -101,7 +101,7 @@ void ConvTest::set_use_flat_elements (const bool use) {
 void ConvTest::set_use_woodland_rg0c0 (const bool use) {
 #ifndef WOODLAND_ACORN_HAVE_DC3D
   if (not use) {
-    printf("WARNING: Using Woodland rg0c0 impl b/c dc3d impl is missing.");
+    printf("WARNING: Using Woodland rg0c0 impl b/c dc3d impl is missing.\n");
     use_woodland_rg0c0 = true;
     return;
   }
@@ -986,7 +986,9 @@ int ConvTest::unittest () {
   nerr += ExtrudedCubicSplineSurface::unittest();
   nerr += FlatElementSurface::unittest();
   nerr += ConvTest::test_interp();
+#ifdef WOODLAND_ACORN_HAVE_DC3D
   nerr += test_fast_okada_methods(false);
+#endif
   nerr += test_fast_okada_methods(true);
   nerr += test_fast_woodland_methods();
   const auto t1 = acorn::dbg::gettime();

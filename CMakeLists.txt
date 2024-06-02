@@ -16,6 +16,7 @@ if (OpenMP_Fortran_FOUND)
 endif()
 
 add_subdirectory(woodland/acorn)
+add_subdirectory(woodland/examples/convzx)
 
 install(EXPORT woodland DESTINATION cmake)
 install(FILES cmake/woodland-config.cmake DESTINATION cmake)

@@ -47,7 +47,7 @@ set(WOODLAND_ACORN_HEADERS
 
 # Not currently supported:
 #   option(WOODLAND_ACORN_VECTORIZE "Enable vectorization." OFF)
-#   set(WOODLAND_ACORN_PACK_N 4 CACHE STRING "Pack size for vectorization.")
+set(WOODLAND_ACORN_PACK_N 4 CACHE STRING "Pack size for vectorization.")
 
 set(WOODLAND_ACORN_DC3D_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../extern/dc3d.f")
 if (EXISTS ${WOODLAND_ACORN_DC3D_SRC})

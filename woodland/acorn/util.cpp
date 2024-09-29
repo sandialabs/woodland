@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstdarg>
 #include <limits>
 
 namespace woodland {
@@ -243,13 +244,216 @@ void tmatvec (const Real x[3], const Real y[3], const Real z[3],
   v[2] = x[2]*u[0] + y[2]*u[1] + z[2]*u[2];
 }
 
-int util_test () {
+void form_separated_vector (const Real u[3], Real v[3]) {
+  Real minmag = std::abs(u[0]), mag;
+  int idx = 0;
+  mag = std::abs(u[1]);
+  if (mag < minmag) {
+    minmag = mag;
+    idx = 1;
+  }
+  mag = std::abs(u[2]);
+  if (mag < minmag) {
+    minmag = mag;
+    idx = 2;
+  }
+  v[0] = v[1] = v[2] = 0;
+  v[idx] = 1;
+}
+
+static int test_form_separated_vector () {
+  const int n = 1000;
   int nerr = 0;
-  nerr += test_calc_parabola_coefs();
-  nerr += test_quadratic_eq();
-  nerr += test_cosxm1();
-  nerr += test_sqrt1pxm1();
-  nerr += test_rotate();
+  const Real maxdot = std::sqrt(1.0/3.0) + 1e-12;
+  Real maxval = 0;
+  for (int i = 0; i < n; ++i) {
+    Real u[3], v[3];
+    for (int i = 0; i < 3; ++i) u[i] = (urand() - 0.5);
+    form_separated_vector(u, v);
+    mv3::normalize(u);
+    mv3::normalize(v);
+    Real dot = 0;
+    for (int i = 0; i < 3; ++i) dot += u[i]*v[i];
+    if (std::abs(dot) > maxdot) ++nerr;
+    maxval = std::max(maxval, std::abs(dot));
+  }
+  if (nerr) {
+    printf("%1.15e %1.6e\n", maxval, maxdot);
+    printf("test_form_separated_vector failed\n");
+  }
+  return nerr;
+}
+
+void form_rotation_given_x (const Real x[3], Real R[9]) {
+  mv3::copy(x, R);
+  mv3::normalize(R);
+  form_separated_vector(R, R+6);
+  mv3::cross(R+6, R, R+3);
+  mv3::normalize(R+3);
+  mv3::cross(R, R+3, R+6);
+}
+
+static int test_form_rotation_given_x () {
+  const int n = 100;
+  int nerr = 0;
+  for (int i = 0; i < n; ++i) {
+    Real u[3], v[3], R[9];
+    for (int i = 0; i < 3; ++i) u[i] = (urand() - 0.5);
+    form_rotation_given_x(u, R);
+    mv3::matvec(R, u, v);
+    if (std::abs(v[0] - mv3::norm2(u)) > 10*mv3::eps) ++nerr;
+    if (std::abs(v[1]) > 10*mv3::eps) ++nerr;
+    if (std::abs(v[2]) > 10*mv3::eps) ++nerr;
+    mv3::cross(R+3, R+6, u);
+    if (std::abs(mv3::dot(R, u) - 1) > 10*mv3::eps) ++nerr;
+  }
+  if (nerr) printf("test_form_rotation_given_x failed\n");
+  return nerr;
+}
+
+void form_rotation_given_x_then_z (const Real x[3], const Real z[3], Real R[9]) {
+  mv3::copy(x, R);
+  mv3::normalize(R);
+  // Form trial zhat.
+  const auto xhat_dot_z = mv3::dot(R, z);
+  Real zhat[3];
+  mv3::axpbyz(1, z, -xhat_dot_z, R, zhat);
+  const auto zn = mv3::norm2(zhat);
+  if (zn < 10*mv3::eps*mv3::norm2(z)) {
+    // x and z are parallel, so form the rotation using just x.
+    form_rotation_given_x(x, R);
+    return;
+  }
+  for (int d = 0; d < 3; ++d) zhat[d] /= zn;
+  // Reorthogonalize zhat.
+  const auto xhat_dot_zhat = mv3::dot(R, zhat);
+  mv3::axpbyz(1, zhat, -xhat_dot_zhat, R, R+6);
+  mv3::normalize(R+6);
+  mv3::cross(R+6, R, R+3);
+  assert(mv3::norm22(R+3) > 1 - 1e4*mv3::eps);
+}
+
+static int test_form_rotation_given_x_then_z () {
+  const int n = 100;
+  int nerr = 0;
+  for (int i = 0; i < n; ++i) {
+    Real x[3], z[3], v[3], w[3], R[9] = {0};
+    for (int i = 0; i < 3; ++i) x[i] = (urand() - 0.5);
+    switch (i % 3) {
+    case 0:
+      for (int i = 0; i < 3; ++i) z[i] = (urand() - 0.5);
+      break;
+    case 1:
+      for (int i = 0; i < 3; ++i)
+        z[i] = x[i] + i*mv3::eps*(urand() - 0.5);
+      break;
+    case 2:
+      mv3::copy(x, z);
+      break;
+    }
+    form_rotation_given_x_then_z(x, z, R);
+    mv3::matvec(R, x, v);
+    int ne = 0;
+    if (std::abs(v[0] - mv3::norm2(v)) > 10*mv3::eps) ++ne;
+    if (std::abs(v[1]) > 10*mv3::eps) ++ne;
+    if (std::abs(v[2]) > 50*mv3::eps) ++ne;
+    if (std::abs(mv3::dot(R+3, z)) > 10*mv3::eps) ++ne;
+    mv3::cross(R+3, R+6, w);
+    if (std::abs(mv3::dot(R, w) - 1) > 10*mv3::eps) ++ne;
+    if (ne) {
+      prc(ne);
+      prarr("x",x,3);
+      prarr("z",z,3);
+      prarr("R",R,9);
+      prc(std::abs(v[0] - mv3::norm2(v)));
+      prc(std::abs(v[1]));
+      prc(std::abs(v[2]));
+      prc(std::abs(mv3::dot(R, w) - 1));
+      prc(mv3::dot(R+3, z));
+    }
+    nerr += ne;
+  }
+  if (nerr) printf("test_form_rotation_given_x_then_z failed\n");
+  return nerr;
+}
+
+std::vector<std::string> split (std::string s, const std::string& delim) {
+  std::vector<std::string> toks;
+  const auto dsz = delim.size();
+  for (;;) {
+    const auto p = s.find(delim);
+    if (p == std::string::npos) break;
+    toks.push_back(s.substr(0, p));
+    s.erase(0, p + dsz);
+  }
+  toks.push_back(s);
+  return toks;
+}
+
+static int test_split () {
+  const auto toks = split("  hi how 3.14?  7", " ");
+  int ne = 0;
+  if (toks.size() != 7) ++ne;
+  const int idxs[] = {2,3,4,6};
+  const char* strs[] = {"hi", "how", "3.14?", "7"};
+  for (size_t i = 0; i < sizeof(idxs)/sizeof(*idxs); ++i)
+    if (toks[idxs[i]] != strs[i]) ++ne;
+  return ne;
+}
+
+Sprinter::Sprinter (const int nbuf_)
+  : n(0), nbuf(nbuf_ > 0 ? nbuf_ : 128), buf(nbuf)
+{}
+
+void Sprinter::add (const char* format, ...) {
+  for (;;) {
+    va_list args;
+    va_start(args, format);
+    const int ncur = vsnprintf(&buf[n], nbuf-n, format, args);
+    va_end(args);
+    if (ncur < nbuf-n) {
+      n += ncur;
+      break;
+    }
+    nbuf *= 2;
+    buf.resize(nbuf);
+  }
+  assert(n < nbuf);
+}
+
+void Sprinter::out (FILE* stream, const bool newline) const {
+  const char* format = newline ? "%s\n" : "%s";
+  fprintf(stream, format, buf.data());
+}
+
+std::string Sprinter::str () const { return std::string(buf.data()); }
+
+static int test_Sprinter () {
+  int ne = 0;
+  std::vector<std::string> strs;
+  for (const int nbuf : {4096, 3}) {
+    Sprinter s(nbuf);
+    for (int i = 0; i < 10; ++i)
+      s.add("float %1.15f exp %1.15e string %s\n",
+            M_PI, M_PI, "3.141592653589793");
+    strs.push_back(s.str());
+  }
+  if (strs[1] != strs[0]) ++ne;
+  return ne;
+}
+
+int util_test () {
+  int nerr = 0, ne;
+  rununittest(test_calc_parabola_coefs);
+  rununittest(test_quadratic_eq);
+  rununittest(test_cosxm1);
+  rununittest(test_sqrt1pxm1);
+  rununittest(test_rotate);
+  rununittest(test_form_separated_vector);
+  rununittest(test_form_rotation_given_x);
+  rununittest(test_form_rotation_given_x_then_z);
+  rununittest(test_split);
+  rununittest(test_Sprinter);
   return nerr;
 }
 

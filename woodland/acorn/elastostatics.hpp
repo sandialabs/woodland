@@ -120,8 +120,9 @@ void call_okada(
   const Real lam, const Real mu,
   const int n,
   const Real* srcs, const Real* rcvs,
-  const Real* dislocs, const Real* nmls,
-  const Real* strike_dip_dims,
+  const Real* dislocs,
+  const Real* nmls, // if nml = zhat, along-strike assumed to be xhat
+  const Real* strike_dip_dims, // unused if point
   Real* sigmas);
 
 } // namespace acorn

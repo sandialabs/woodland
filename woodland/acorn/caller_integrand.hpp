@@ -10,11 +10,11 @@ namespace acorn {
 
 // Caller's integrand over a domain in Real^2.
 struct CallerIntegrands {
-  static const int max_n_integrand = 6;
   // Number of integrands. Must be <= max_n_integrand.
   virtual int nintegrands() const = 0;
-  // Evaluate each integrand[i] at point p.
-  virtual void eval(const int n, const Real* p, RPtr integrand) const = 0;
+  // Evaluate each integrand[j], j = 0 to nintegrands()-1, at the points
+  // &p[2*i], i = 0 to n-1.
+  virtual void eval(const int n, CRPtr p, RPtr integrand) const = 0;
   // Smallest R = sqrt(x^2 + y^2) < R_max at which this integrand can be
   // evaluated. This is for the case where there is a singularity at (0,0). In
   // eval, the caller should be careful to avoid cancellation and truncation

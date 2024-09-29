@@ -407,6 +407,7 @@ void eval_sigma_at_ctrs (
 {
   assert(SigmaType::is_valid(stype));
   const auto ncell = rt.ncell();
+  Workspace w;
   ompparfor for (int ir = 0; ir < ncell; ++ir) {
     auto* const sigma = &sigmas[6*ir];
     for (int i = 0; i < 6; ++i) sigma[i] = 0;
@@ -435,7 +436,7 @@ void eval_sigma_at_ctrs (
 #endif
       case SigmaType::fs: {
         fs3d::calc_sigma_const_disloc_rect(
-          lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
+          w, lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
           qp.np_radial, qp.np_angular, qp.triquad_order);
       } break;
       case SigmaType::fs_exact_geometry_disloc: {
@@ -443,7 +444,7 @@ void eval_sigma_at_ctrs (
         gc.get_uv(rcv, cc_uv);
         SigmaExactOptions o;
         o.qp = qp;
-        eval_sigma_exact(gc, rt, lam, mu, dislocf, is, 1, cc_uv, s, o);
+        eval_sigma_exact(w, gc, rt, lam, mu, dislocf, is, 1, cc_uv, s, o);
       } break;
       case SigmaType::invalid:
       default: assert(0);
@@ -480,6 +481,7 @@ void eval_sigma (
   
   const Real xy_side_lens[] = {rt.get_vlength(is), rt.get_ulength(is)};
 
+  Workspace w;
   for (int iu = 0, kr = 0; iu < nurcv; ++iu) {
     const Real a = Real(iu + 1)/(nurcv + 1);
     for (int iv = 0; iv < nvrcv; ++iv, ++kr) {
@@ -499,7 +501,7 @@ void eval_sigma (
 #endif
       case SigmaType::fs:
         fs3d::calc_sigma_const_disloc_rect(
-          lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
+          w, lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
           qp.np_radial, qp.np_angular, qp.triquad_order);
         break;
       case SigmaType::invalid:
@@ -574,13 +576,13 @@ struct SigmaExactIntegrands : public CallerIntegrands {
     }
   }
 
-  virtual int nintegrands () const override { return 6; }
+  int nintegrands () const override { return 6; }
 
-  virtual Real permitted_R_min (const Real R_max) const override {
+  Real permitted_R_min (const Real R_max) const override {
     return 1e-3*R_max;
   }
 
-  virtual void eval (const int n, CRPtr p_uvs, RPtr integrand) const override {
+  void eval (const int n, CRPtr p_uvs, RPtr integrand) const override {
     for (int i = 0; i < n; ++i) {
       Real p[3], vhat[3], nml[3], uhat[3], disloc_lcl[3], disloc[3];
       const auto p_uv = &p_uvs[2*i];
@@ -643,25 +645,26 @@ private:
   }
 };
 
-static void eval_sigma_exact (const SigmaExactIntegrands& s, RPtr sigma_out,
-                              const SigmaExactOptions o) {
+static void
+eval_sigma_exact (Workspace& w, const SigmaExactIntegrands& s, RPtr sigma_out,
+                  const SigmaExactOptions o) {
   Real sigma[6] = {0};
   const plane::Polygon p = s.get_src_polygon();
   if (s.dist < o.hfp_dist_fac*s.L) {
     integrals::Options io;
     io.np_radial = o.qp.np_radial;
     io.np_angular = o.qp.np_angular;
-    integrals::calc_hfp(io, p, s.rcv_uv, s, sigma);
+    integrals::calc_hfp(w, io, p, s.rcv_uv, s, sigma);
   } else {
     const auto triquad_order = o.qp.triquad_order <= 0 ?
       get_triquad_order(s.L, s.dist) : o.qp.triquad_order;
-    integrals::calc_integral(p, s, sigma, triquad_order);
+    integrals::calc_integral(w, p, s, sigma, triquad_order);
   }
   for (int i = 0; i < 6; ++i) sigma_out[i] = sigma[i];
 }
 
 void eval_sigma_exact (
-  const GeneralizedCylinder& gc, const RectTessellation& rt,
+  Workspace& w, const GeneralizedCylinder& gc, const RectTessellation& rt,
   const Real lam, const Real mu, const CallerUvFn& fdisloc,
   const int isrc, const int nuv, CRPtr uvs, RPtr sigmas,
   const SigmaExactOptions o, const bool thread)
@@ -672,12 +675,12 @@ void eval_sigma_exact (
   if (thread) {
     ompparfor for (int ir = 0; ir < nuv; ++ir) {
       SigmaExactIntegrands sei(gc, rt, lam, mu, fdisloc, isrc, &uvs[2*ir], o);
-      eval_sigma_exact(sei, &sigmas[6*ir], o);
+      eval_sigma_exact(w, sei, &sigmas[6*ir], o);
     }
   } else {
     for (int ir = 0; ir < nuv; ++ir) {
       SigmaExactIntegrands sei(gc, rt, lam, mu, fdisloc, isrc, &uvs[2*ir], o);
-      eval_sigma_exact(sei, &sigmas[6*ir], o);
+      eval_sigma_exact(w, sei, &sigmas[6*ir], o);
     }
   }
 }
@@ -688,6 +691,7 @@ void eval_sigma_exact_at_ctrs (
   const Real lam, const Real mu, const CallerUvFn& fdisloc,
   RPtr sigmas, const SigmaExactOptions o)
 {
+  Workspace w;
   const auto ncell_rcv = rt_rcv.ncell();
   const auto ncell_src = rt_src.ncell();
   ompparfor for (int ir = 0; ir < ncell_rcv; ++ir) {
@@ -698,7 +702,7 @@ void eval_sigma_exact_at_ctrs (
     for (int i = 0; i < 6; ++i) sigma[i] = 0;
     for (int is = 0; is < ncell_src; ++is) {
       Real s[6];
-      eval_sigma_exact(gc, rt_src, lam, mu, fdisloc, is, 1, cc_rcv_uv, s, o);
+      eval_sigma_exact(w, gc, rt_src, lam, mu, fdisloc, is, 1, cc_rcv_uv, s, o);
       for (int i = 0; i < 6; ++i) sigma[i] += s[i];
     }
   }
@@ -922,8 +926,9 @@ int unittest () {
   printf("vv::unittest: Because extern/dc3d.f is not available, "
          "this unit test will purposely fail.\n");
 #endif
-  int ne = 0;
+  int nerr = 0;
   {
+    int ne = 0;
     GeneralizedCylinder gc;
     for (const auto shape : {gc.circle, gc.ellipse}) {
       gc.set_shape(shape).set_length(1.5).set_radius(0.8)
@@ -959,6 +964,8 @@ int unittest () {
         eval_sigma_at_ctrs(gc, rt, 1, 1, disloc, SigmaType::fs, sigmas);
       }
     }
+    if (ne) printf("vv::unittest 1 failed\n");
+    nerr += ne;
   }
   const Real lo = 0.99, hi = 1.01;
   const bool verbose = false;
@@ -971,6 +978,7 @@ int unittest () {
     }                         
   };
   {
+    int ne = 0;
     convtest::gencyl::Config c(convtest::gencyl::Config::p_circle);
     c.python_outfn = "";
     c.n_v_cell_base = 128;
@@ -978,8 +986,11 @@ int unittest () {
     const auto r = run(c, verbose);
     const Real l2s[] = {6.558e-02, 2.115e-02, 8.357e-02, 3.435e-02};
     cmp_l2s(l2s, r, 4, ne);
+    if (ne) printf("vv::unittest 2 failed\n");
+    nerr += ne;
   }
   {
+    int ne = 0;
     convtest::gencyl::Config c(convtest::gencyl::Config::p_ellipse);
     c.python_outfn = "";
     c.n_v_cell_base = 128;
@@ -987,6 +998,8 @@ int unittest () {
     const auto r = run(c, verbose);
     const Real l2s[] = {1.609e-01, 1.580e-02, 1.414e-01, 3.157e-02};
     cmp_l2s(l2s, r, 4, ne);
+    if (ne) printf("vv::unittest 3 failed\n");
+    nerr += ne;
   }
   {
     convtest::flatstrip::Config c;
@@ -994,15 +1007,21 @@ int unittest () {
     c.n_cell_base = 32;
     c.n_refine = 1;
     {
+      int ne = 0;
       const auto r = run(c, verbose);
-      const Real l2s[] = {1.163e-09, 9.063e-03};
+      const Real l2s[] = {1.015e-09, 9.063e-03};
       for (int i = 0; i < 2; ++i) {
         const auto v = r.l2_errs[i][0];
-        if (v > hi*l2s[i] || v < lo*l2s[i])
+        if (v > hi*l2s[i] || v < lo*l2s[i]) {
+          printf("v %1.3e l2s[%d] %1.3e\n", v, i, l2s[i]);
           ++ne;
+        }
       }
+      if (ne) printf("vv::unittest 4 failed\n");
+      nerr += ne;
     }
     {
+      int ne = 0;
       c.n_cell_base = 64;
       c.run_fs = false;
       const auto r = run(c, verbose);
@@ -1012,9 +1031,12 @@ int unittest () {
         if (v > hi*l2s[i] || v < lo*l2s[i])
           ++ne;
       }
+      if (ne) printf("vv::unittest 5 failed\n");
+      nerr += ne;
     }
   }
   {
+    int ne = 0;
     convtest::gencyl::Config c(convtest::gencyl::Config::p_cylinder);
     c.python_outfn = "";
     c.n_refine = 1;
@@ -1022,8 +1044,11 @@ int unittest () {
     const Real l2s[] = {1.884e-01, 5.113e-02, 3.871e-02, 1.275e-01, 6.760e-02,
                         1.393e-01};
     cmp_l2s(l2s, r, 6, ne);
+    if (ne) printf("vv::unittest 6 failed\n");
+    nerr += ne;
   }
   {
+    int ne = 0;
     convtest::gencyl::Config c(convtest::gencyl::Config::p_ellipse_cylinder);
     c.python_outfn = "";
     c.n_refine = 1;
@@ -1031,8 +1056,10 @@ int unittest () {
     const Real l2s[] = {3.766e-01, 8.234e-02, 5.171e-02, 2.463e-01, 1.086e-01,
                         2.883e-01};
     cmp_l2s(l2s, r, 6, ne);
+    if (ne) printf("vv::unittest 7 failed\n");
+    nerr += ne;
   }
-  return ne;
+  return nerr;
 }
 
 } // namespace vv

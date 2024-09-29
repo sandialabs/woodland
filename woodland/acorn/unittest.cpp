@@ -1,5 +1,7 @@
 #include <cstdio>
 
+#include "woodland/acorn/solver1d.hpp"
+#include "woodland/acorn/bezier_cubic.hpp"
 #include "woodland/acorn/compose_triquad.hpp"
 #include "woodland/acorn/util.hpp"
 #include "woodland/acorn/linalg.hpp"
@@ -8,6 +10,7 @@
 #include "woodland/acorn/hfp.hpp"
 #include "woodland/acorn/interaction_integrals.hpp"
 #include "woodland/acorn/fs3d.hpp"
+#include "woodland/acorn/hs3d.hpp"
 #include "woodland/acorn/elastostatics.hpp"
 #include "woodland/acorn/vv.hpp"
 #include "woodland/acorn/dbg.hpp"
@@ -22,6 +25,7 @@ typedef Matvec<3,Real> mv3;
 #ifdef WOODLAND_ACORN_HAVE_DC3D
 int test_fullspace_rect_against_okada () {
   int ne = 0;
+  Workspace w;
   const Real lam = 1.1, mu = 0.9;
   // Test scaling of the problem. dc3* has issues when scl gets too small. Our
   // code seems fine.
@@ -44,8 +48,8 @@ int test_fullspace_rect_against_okada () {
                               scl*0};
           Real sigma_me[6], sigma_ok[6], sigma_ok1[6];
           fs3d::calc_sigma_const_disloc_rect(
-            lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv,
-            sigma_me, 40, 40);
+            w, lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv,
+            sigma_me, 40, 40, -1, 1e-12);
           call_okada(
             true, false, lam, mu, 1, src, rcv, disloc, nml, xy_side_lens,
             sigma_ok);
@@ -111,7 +115,7 @@ int test_fullspace_rect_against_okada () {
           // Sigmas.
           Real sigma_me[6], sigma_ok[6];
           fs3d::calc_sigma_const_disloc_rect(
-            lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv,
+            w, lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv,
             sigma_me, 40, 40);
           fs3d::calc_sigma_const_disloc_rect_okada(
             lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv,
@@ -134,23 +138,16 @@ int test_fullspace_rect_against_okada () {
   }
   return ne;
 }
-
-int test_halfspace_rect_against_okada () {
-  int ne = 0;
-  return ne;
-}
 #endif // WOODLAND_ACORN_HAVE_DC3D
 } // namespace
 
-#define rununittest(f) do {                     \
-    ne = f();                                   \
-    if (ne) printf(#f " ne %d\n", ne);          \
-    nerr += ne;                                 \
-  } while (0)
-
 int unittest () {
   int nerr = 0, ne;
+  rununittest(Solver1d<Real>::unittest);
+  rununittest(BezierCubic<Real>::unittest);
   rununittest(util_test);
+  rununittest(fs3d::unittest);
+  rununittest(hs3d::unittest);
   rununittest(linalg::unittest);
   rununittest(TriangleQuadrature::unittest);
   rununittest(mv2::unittest);
@@ -159,10 +156,8 @@ int unittest () {
   rununittest(plane::unittest);
   rununittest(hfp::unittest);
   rununittest(integrals::unittest);
-  rununittest(fs3d::unittest);
 #ifdef WOODLAND_ACORN_HAVE_DC3D
   rununittest(test_fullspace_rect_against_okada);
-  rununittest(test_halfspace_rect_against_okada);
 #endif
 #ifdef WOODLAND_ACORN_VECTORIZE
   if ( ! fs3d::time_calc_sigma_point(1000, false)) {

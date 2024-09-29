@@ -3,6 +3,7 @@
 
 #include "woodland/acorn/caller_integrand.hpp"
 #include "woodland/acorn/plane_geometry.hpp"
+#include "woodland/acorn/workspace.hpp"
 
 namespace woodland {
 namespace acorn {
@@ -28,13 +29,16 @@ using plane::Pt;
 using plane::Polygon;
 
 struct Options {
-  int np_radial, np_angular;
-  Options();
+  int np_radial = 40, np_angular = 40;
+  // Ignore a subpolygon having area relative to that of the parent polygon
+  // smaller than this.
+  Real relative_area_tol = 1e-8;
 };
 
 // Calc the h.f.p. of f over the convex polygon p. cc can be outside of p. May
 // return false if something goes wrong, but does not check inputs.
 bool calc_hfp(
+  Workspace& w,
   const Options& o,
   // Convex polygon over which to integrate.
   const Polygon& p,
@@ -47,6 +51,7 @@ bool calc_hfp(
 // Calc the integral of f over the convex polygon p. May return false if
 // something goes wrong, but does not check inputs.
 bool calc_integral(
+  Workspace& w,
   // Convex polygon over which to integrate.
   const Polygon& p,
   const CallerIntegrands& f,
@@ -54,7 +59,18 @@ bool calc_integral(
   RPtr integrals,
   const int tq_order = 20);
 
+bool calc_integral_tensor_quadrature(
+  Workspace& w, const Options& o, const Polygon& p, const CallerIntegrands& f,
+  // Subdivide p at a common point in one of two ways:
+  //   nearest_bdy_pt_to_anchor true: at the projection of anchor onto p's bdy;
+  //                           false: at anchor.
+  const Pt anchor, const bool nearest_bdy_pt_to_anchor,
+  RPtr integrals);
+
 int unittest();
+
+void fig_init();
+void fig_fin();
 
 } // namespace integrals
 } // namespace acorn

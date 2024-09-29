@@ -37,8 +37,16 @@ inline int get_thread_num () {
 #ifdef _OPENMP
   return omp_get_thread_num();
 #else
-  return 1;
+  return 0;
 #endif  
+}
+
+inline bool in_parallel_region () {
+#ifdef _OPENMP
+  return omp_in_parallel();
+#else
+  return false;
+#endif
 }
 
 } // namespace acorn

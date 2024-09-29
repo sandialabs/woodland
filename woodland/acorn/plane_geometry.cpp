@@ -246,6 +246,35 @@ bool intersect_line_circle_nearer (
   return true;
 }
 
+void calc_nearest_point_on_polygon_boundary_to_point (
+  const Polygon& p, const Pt pt, Pt pt_nearest, int& on_vertex, int& on_edge)
+{
+  Real dist2 = 0;
+  for (int i = 0; i < p.n; ++i) {
+    const auto v1 = &p.xys[2*i], v2 = &p.xys[2*((i+1) % p.n)];
+    Real a;
+    Pt pt_proj;
+    project_p_onto_line(pt, v1, v2, a, pt_proj);
+    int ovi = -1, oei = -1;
+    if (a <= -0.5) {
+      ovi = i;
+      mv2::copy(v1, pt_proj);
+    } else if (a >= 0.5) {
+      ovi = i+1;
+      mv2::copy(v2, pt_proj);
+    } else {
+      oei = i;
+    }
+    const Real idist2 = mv2::distance2(pt, pt_proj);
+    if (i == 0 || idist2 < dist2) {
+      dist2 = idist2;
+      mv2::copy(pt_proj, pt_nearest);
+      on_vertex = ovi;
+      on_edge = oei;
+    }
+  }
+}
+
 static int test_inscribe_largest_circle () {
   int ne = 0;
   {
@@ -361,6 +390,61 @@ static int test_intersect_line_circle_nearer () {
   return ne;
 }
 
+static int test_calc_nearest_point_on_polygon_boundary_to_point () {
+  int ne = 0;
+  // The polygon doesn't have to be convex.
+  const int n = 7;
+  Real vtxs[2*n];
+  for (int i = 0; i < n; ++i) {
+    const Real theta = Real(i)*2*M_PI/n;
+    const Real r = 1 + (i % 3);
+    vtxs[2*i+0] = r*std::cos(theta);
+    vtxs[2*i+1] = r*std::sin(theta);
+  }
+  const Polygon poly(vtxs, n);
+  for (int i = 0; i < n; ++i) {
+    int on_vertex, on_edge;
+    Pt pn;
+    calc_nearest_point_on_polygon_boundary_to_point(poly, &vtxs[2*i],
+                                                    pn, on_vertex, on_edge);
+    if (on_vertex != i) ++ne;
+    if (mv2::distance2(&vtxs[2*i], pn) > 0) ++ne;
+  }
+  const int ns = 20;
+  for (int i = 0; i < ns; ++i) {
+    const Real a = Real(i)/(ns-1);
+    const Real y = -4*(1-a) + 4*a;
+    for (int j = 0; j < ns; ++j) {
+      const Real b = Real(i)/(ns-1);
+      const Real x = -4*(1-b) + 4*b;
+      const Pt pt{x,y};
+      Real vdist = 10;
+      for (int k = 0; k < n; ++k)
+        vdist = std::min(vdist, mv2::distance(pt, &vtxs[2*k]));
+      int on_vertex, on_edge;
+      Pt pn;
+      calc_nearest_point_on_polygon_boundary_to_point(poly, pt,
+                                                      pn, on_vertex, on_edge);
+      const Real dist = mv2::distance(pt, pn);
+      if (dist > vdist) ++ne;
+      if (on_edge >= 0) {
+        const Real d1 = mv2::distance(pt, &vtxs[2*on_edge]);
+        const Real d2 = mv2::distance(pt, &vtxs[2*((on_edge+1) % n)]);
+        if (dist > std::min(d1, d2)) ++ne;
+      }
+      if (on_vertex >= 0 && mv2::distance(pn, &vtxs[2*on_vertex]) > 0) ++ne;
+      Pt pnt;
+      mv2::copy(pn, pnt);
+      calc_nearest_point_on_polygon_boundary_to_point(poly, pnt,
+                                                      pn, on_vertex, on_edge);
+      if (mv2::distance2(pnt, pn) > 1e-15) ++ne;
+    }
+  }
+  if (ne)
+    printf("test_calc_nearest_point_on_polygon_boundary_to_point failed\n");
+  return ne;
+}
+
 static int test_misc () {
   int ne = 0;
   {
@@ -385,6 +469,7 @@ int unittest () {
   ne += test_inscribe_largest_circle();
   ne += test_intersect_line_line();
   ne += test_intersect_line_circle_nearer();
+  ne += test_calc_nearest_point_on_polygon_boundary_to_point();
   ne += test_misc();
   return ne;
 }

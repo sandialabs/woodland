@@ -2,6 +2,7 @@
 #define INCLUDE_WOODLAND_ACORN_FS3D_SIGMA
 
 #include "woodland/acorn/acorn.hpp"
+#include "woodland/acorn/workspace.hpp"
 
 namespace woodland {
 namespace acorn {
@@ -22,7 +23,14 @@ void calc_sigma_point(
   // [sigma_11 sigma_12 sigma_13 sigma_22 sigma_23 sigma_33]
   RealT sigma[6]);
 
+struct RectInfo {
+  bool hfp;
+  Real L, dist[2];
+  int triquad_order;
+};
+
 void calc_sigma_const_disloc_rect(
+  Workspace& w,
   // Lame coefficients.
   const Real lam, const Real mu,
   // Source rectangle center.
@@ -43,7 +51,10 @@ void calc_sigma_const_disloc_rect(
   // For integrals::calc_hfp.
   const int hfp_np_radial = 8, const int hfp_np_angular = 6,
   // For integrals::calc_integral. If -1, set based on distance.
-  int triquad_order = -1);
+  int triquad_order = -1,
+  // If triquad_order = -1, then use this tol in get_triquad_order.
+  const Real triquad_tol = 1e-10,
+  RectInfo* info = nullptr);
 
 // Use Okada's dc3d to compute sigma.
 void calc_sigma_const_disloc_rect_okada(
@@ -52,6 +63,10 @@ void calc_sigma_const_disloc_rect_okada(
   const Real rcv[3], Real sigma[6]);
 
 bool time_calc_sigma_point(const int n, const bool verbose = true);
+
+void study_triquad();
+
+void make_figure_data();
 
 int unittest();
 

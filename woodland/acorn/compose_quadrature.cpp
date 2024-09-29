@@ -29,7 +29,8 @@ Real x_gll_table[] = {
   -1, -np7a, -np7b, 0, np7b, np7a, 1,
   // The next set are obtained from Michels, H. H. "Abscissas and weight
   // coefficients for Lobatto quadrature." Mathematics of Computation 17.83
-  // (1963): 237-244.  np 8
+  // (1963): 237-244.
+  // np 8
   -1, -0.8717401485096066153, -0.59170018143314230214, -0.20929921790247886877,
   0.20929921790247886877, 0.59170018143314230214, 0.87174014850960661534, 1,
   // np 9
@@ -182,7 +183,7 @@ Real w_gll_table[] = {
    with calls to
    gsl_integration_glfixed_table_alloc
    gsl_integration_glfixed_point
-       gsl_integration_glfixed_table_free.
+   gsl_integration_glfixed_table_free.
  */
 
 Real x_gl_table[] = {

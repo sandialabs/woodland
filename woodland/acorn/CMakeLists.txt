@@ -1,23 +1,31 @@
 set(WOODLAND_ACORN_SRCS
+  bezier_cubic.cpp
   compose_quadrature.cpp
   compose_triquad.cpp
   elastostatics.cpp
   elastostatics_integrals.cpp
   fs3d.cpp
-  fs3d_sigma_Tx81.cpp
+  fs3d_sigma_znml.cpp
   hfp.cpp
+  hs3d.cpp
+  hs3d_sigma_A.cpp
+  hs3d_sigma_B.cpp
+  hs3d_sigma_C.cpp
   interaction_integrals.cpp
   linalg.cpp
   matvec.cpp
   plane_geometry.cpp
+  solver1d.cpp
   triangle.cpp
   unittest.cpp
   util.cpp
   vv.cpp
-  vv_flat_strip.cpp)
+  vv_flat_strip.cpp
+  workspace.cpp)
 
 set(WOODLAND_ACORN_HEADERS
   acorn.hpp
+  bezier_cubic.hpp
   caller_integrand.hpp
   compose_lagrange_polynomial.hpp
   compose_quadrature.hpp
@@ -27,20 +35,24 @@ set(WOODLAND_ACORN_HEADERS
   elastostatics_integrals.hpp
   fs3d.hpp
   hfp.hpp
+  hs3d.hpp
   interaction_integrals.hpp
   linalg.hpp
   macros.hpp
   matvec.hpp
   openmp.hpp
   plane_geometry.hpp
+  solver1d.hpp
   triangle.hpp
   types.hpp
   unittest.hpp
   util.hpp
   vectorization.hpp
-  vv.hpp)
+  vv.hpp
+  workspace.hpp)
 
-option(WOODLAND_ACORN_VECTORIZE "Enable vectorization." OFF)
+# Not currently supported:
+#   option(WOODLAND_ACORN_VECTORIZE "Enable vectorization." OFF)
 set(WOODLAND_ACORN_PACK_N 4 CACHE STRING "Pack size for vectorization.")
 
 set(WOODLAND_ACORN_DC3D_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../../extern/dc3d.f")

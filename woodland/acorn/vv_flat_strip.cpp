@@ -68,6 +68,7 @@ eval_sigma_at_ctrs (const Config& c, const int ncell,
                     RPtr dislocs = nullptr,
                     const QuadratureParams qp = QuadratureParams()) {
   assert(SigmaType::is_valid(stype));
+  Workspace w;
   ompparfor for (int ir = 0; ir < ncell; ++ir) {
     auto* const sigma = &sigmas[6*ir];
     for (int i = 0; i < 6; ++i) sigma[i] = 0;
@@ -90,7 +91,7 @@ eval_sigma_at_ctrs (const Config& c, const int ncell,
 #endif
       case SigmaType::fs:
         fs3d::calc_sigma_const_disloc_rect(
-          c.lam, c.mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
+          w, c.lam, c.mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
           qp.np_radial, qp.np_angular, qp.triquad_order);
         break;
       case SigmaType::fs_exact_geometry_disloc:
@@ -129,13 +130,13 @@ struct SigmaExactIntegrands : public CallerIntegrands {
     }
   }
 
-  virtual int nintegrands () const override { return 6; }
+  int nintegrands () const override { return 6; }
 
-  virtual Real permitted_R_min (const Real R_max) const override {
+  Real permitted_R_min (const Real R_max) const override {
     return 1e-3*R_max;
   }
 
-  virtual void eval (const int n, CRPtr ps, RPtr integrand) const override {
+  void eval (const int n, CRPtr ps, RPtr integrand) const override {
     for (int i = 0; i < n; ++i) {
       const auto p = &ps[2*i];
       const Real src[] = {p[0], p[1], 0};
@@ -174,25 +175,26 @@ private:
   Real x[npt], f[3][npt];
 };
 
-static void eval_sigma_exact (const SigmaExactIntegrands& s, RPtr sigma_out,
-                              const QuadratureParams qp = QuadratureParams()) {
+static void
+eval_sigma_exact (Workspace& w, const SigmaExactIntegrands& s, RPtr sigma_out,
+                  const QuadratureParams qp = QuadratureParams()) {
   Real sigma[6] = {0};
   const plane::Polygon p = s.get_src_polygon();
   if (s.dist < s.L/4) {
     integrals::Options io;
     io.np_radial = qp.np_radial;
     io.np_angular = qp.np_angular;
-    integrals::calc_hfp(io, p, s.rcv, s, sigma);
+    integrals::calc_hfp(w, io, p, s.rcv, s, sigma);
   } else {
     const auto triquad_order = qp.triquad_order <= 0 ?
       get_triquad_order(s.L, s.dist) : qp.triquad_order;
-    integrals::calc_integral(p, s, sigma, triquad_order);
+    integrals::calc_integral(w, p, s, sigma, triquad_order);
   } 
   for (int i = 0; i < 6; ++i) sigma_out[i] = sigma[i];
 }
 
 static void eval_sigma_exact (
-  const Config& c, const int ncell, const int isrc,
+  Workspace& w, const Config& c, const int ncell, const int isrc,
   const int nrcv, CRPtr rcv_xy, RPtr sigmas,
   const QuadratureParams qp = QuadratureParams(),
   const bool thread = false)
@@ -202,12 +204,12 @@ static void eval_sigma_exact (
   if (thread) {
     ompparfor for (int ir = 0; ir < nrcv; ++ir) {
       SigmaExactIntegrands sei(c, ncell, isrc, &rcv_xy[2*ir]);
-      eval_sigma_exact(sei, &sigmas[6*ir], qp);
+      eval_sigma_exact(w, sei, &sigmas[6*ir], qp);
     }
   } else {
     for (int ir = 0; ir < nrcv; ++ir) {
       SigmaExactIntegrands sei(c, ncell, isrc, &rcv_xy[2*ir]);
-      eval_sigma_exact(sei, &sigmas[6*ir], qp);
+      eval_sigma_exact(w, sei, &sigmas[6*ir], qp);
     }
   }
 }
@@ -217,13 +219,14 @@ static void eval_sigma_exact_at_ctrs (
   const Config& c_rcv, const int ncell_rcv,
   RPtr sigmas, const QuadratureParams qp = QuadratureParams())
 {
+  Workspace w;
   ompparfor for (int ir = 0; ir < ncell_rcv; ++ir) {
     const Real rcv_xy[] = {c_rcv.length*(ir + 0.5)/ncell_rcv, 0};
     auto* const sigma = &sigmas[6*ir];
     for (int i = 0; i < 6; ++i) sigma[i] = 0;
     for (int is = 0; is < ncell_src; ++is) {
       Real s[6];
-      eval_sigma_exact(c_src, ncell_src, is, 1, rcv_xy, s, qp);
+      eval_sigma_exact(w, c_src, ncell_src, is, 1, rcv_xy, s, qp);
       for (int i = 0; i < 6; ++i) sigma[i] += s[i];
     }
   }

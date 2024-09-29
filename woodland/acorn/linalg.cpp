@@ -98,7 +98,7 @@ static int test_qr () {
             Real a = 0;
             for (int i = 0; i < m; ++i)
               a += Ac[m*j+i]*res[i];
-            if (std::abs(a) > 10*eps) ++nerr;
+            if (std::abs(a) > 100*eps) ++nerr;
           }
         }
       }

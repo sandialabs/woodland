@@ -20,7 +20,7 @@ struct Pack {
   const T& operator[] (const int i) const { return v[i]; }
   T& operator[] (const int i) { return v[i]; }
 
-#define woodland_acorn_pack_unary_op(op)                                         \
+#define woodland_acorn_pack_unary_op(op)                                \
   Me& operator op (const Me& p) { woodland_acorn_pack_for(n) v[i] op p.v[i]; } \
   Me& operator op (const Scalar& s) { woodland_acorn_pack_for(n) v[i] op s; } \
   Me& operator op (const int s) { woodland_acorn_pack_for(n) v[i] op s; }
@@ -33,7 +33,7 @@ struct Pack {
 
 };
 
-#define woodland_acorn_pack_binary_op(op)                                \
+#define woodland_acorn_pack_binary_op(op)                       \
   template <typename T, int N>                                  \
   Pack<T,N> operator op (const Pack<T,N>& a,                    \
                          const Pack<T,N>& b) {                  \

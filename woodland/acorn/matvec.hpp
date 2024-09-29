@@ -53,6 +53,11 @@ struct Matvec {
     return v;
   }
 
+  static RPtr divide (const Real den, RPtr v) {
+    for (int i = 0; i < dim; ++i) v[i] /= den;
+    return v;
+  }
+
   // c = a + b
   static void add (CRPtr a, CRPtr b, RPtr c) {
     for (int i = 0; i < dim; ++i) c[i] = a[i] + b[i];

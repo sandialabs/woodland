@@ -2,6 +2,7 @@
 #define INCLUDE_WOODLAND_EXAMPLES_CONVZX
 
 #include "woodland/acorn/acorn.hpp"
+#include "woodland/acorn/workspace.hpp"
 
 #include <cstdint>
 
@@ -15,6 +16,8 @@ using acorn::RPtr;
 
 typedef std::int64_t Idx;
 typedef std::int64_t Size;
+
+using acorn::Workspace;
 
 } // namespace convzx
 } // namespace examples

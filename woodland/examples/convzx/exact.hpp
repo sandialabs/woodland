@@ -58,6 +58,7 @@ private:
   Options o;
   Real lam = 1, mu = 1;
   bool halfspace = false;
+  mutable Workspace w;
 };
 
 } // namespace convzx

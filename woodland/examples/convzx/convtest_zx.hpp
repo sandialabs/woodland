@@ -51,7 +51,8 @@ struct ConvTest {
   //   For looking at the effects of various things.
   void set_use_four_tris_per_rect(const bool use);
   void set_use_surface_recon(const bool use);
-  void set_use_exact_normals(const bool use);
+  void set_use_exact_tangents(const bool use);
+  void set_use_c2_spline(const bool use);
   void set_use_halfspace(const bool use);
   //     2, 4
   void set_normal_recon_order(const int order);
@@ -138,10 +139,11 @@ private:
   Real lam = 1, mu = 1;
   int ntri_per_rect = 2;
   bool use_surface_recon = true;
-  bool use_exact_normals = false;
+  bool use_exact_tangents = false;
+  bool use_c2_spline = false;
   bool use_flat_elements = false;
   bool use_halfspace = false;
-  int nml_recon_order = 4;
+  int tan_recon_order = 4;
   int disloc_order = 2;
   bool use_woodland_rg0c0 = false;
   ZxFn::Ptr zxfn;
@@ -152,6 +154,7 @@ private:
   int verbosity = 0;
   Real hmmvp_tol = 1e-6;
   mutable Exact::Ptr exact;
+  mutable Workspace w;
 
   void eval_direct(const RealArray& dislocs, RealArray& sigmas) const;
   void eval_fast  (const RealArray& dislocs, RealArray& sigmas) const;
@@ -176,9 +179,10 @@ public: // for unit tests
   discretize(const Triangulation::Ptr& t,
              const ZxFn::Shape shape,
              const bool use_surface_recon = true,
-             const bool use_exact_normals = false,
-             const int nml_recon_order = 4,
-             const bool use_flat_elements = false);
+             const bool use_exact_tangents = false,
+             const int tan_recon_order = 4,
+             const bool use_flat_elements = false,
+             const bool use_c2_splines = false);
 
 public: // for external implementations
   static void calc_rect_ctr(const ZxFn& zxfn, const int nyr, const int irect,

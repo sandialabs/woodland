@@ -60,7 +60,7 @@ int main (int argc, char** argv) {
   case Command::runcase:
   case Command::ct_we_zx:
   case Command::ct_oe_zx: {
-    std::string params = "testcase=0,element=spline-nml-4,disloc=2";
+    std::string params = "testcase=0";
     if (argc > 2) params = argv[2];
     switch (command) {
     case Command::runcase: run_case(params); break;

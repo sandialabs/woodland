@@ -5,6 +5,7 @@
 #include "woodland/acorn/compose_lagrange_polynomial.hpp"
 #include "woodland/acorn/triangle.hpp"
 #include "woodland/acorn/util.hpp"
+#include "woodland/acorn/linalg.hpp"
 #include "woodland/acorn/dbg.hpp"
 
 namespace woodland {
@@ -31,30 +32,241 @@ init_xhat_from_primary (const Real zhat[3], const Real primary[3],
   mv3::normalize(xhat);
 }
 
+namespace {
+
+struct C2CubicSplineCoefs {
+  int nseg, n;
+  CRPtr xs, ys;
+  Real y_x_beg, y_x_end;
+  RPtr cs;
+  RealArray A, cpolys;
+  bool out = false;
+  
+  C2CubicSplineCoefs (const int nseg_, CRPtr xs_, CRPtr ys_,
+                      const Real y_x_beg_, const Real y_x_end_,
+                      RPtr cs_)
+    : nseg(nseg_), xs(xs_), ys(ys_), y_x_beg(y_x_beg_), y_x_end(y_x_end_),
+      cs(cs_)
+  {
+    run();
+  }
+
+private:
+  int idx (const int r, const int c) const { return c*n + r; }
+
+  Real pow (const Real x, const int e) const {
+    assert(e >= 0 && e <= 3);
+    return e == 0 ? 1 : e == 1 ? x : e == 2 ? x*x : x*x*x;
+  }
+
+  void fill_y (const int r, const int c0, const Real x) {
+    for (int i = 0; i < 4; ++i) A[idx(r,c0+i)] = pow(x, i);
+  }
+
+  void fill_y_x (const int sign, const int r, const int c0, const Real x) {
+    A[idx(r,c0)] = 0;
+    for (int i = 1; i < 4; ++i) A[idx(r,c0+i)] = sign*i*pow(x, i-1);
+  }
+
+  void fill_y_xx (const int sign, const int r, const int c0, const Real x) {
+    A[idx(r,c0)] = 0;
+    A[idx(r,c0+1)] = 0;
+    for (int i = 2; i < 4; ++i) A[idx(r,c0+i)] = sign*i*(i-1)*pow(x, i-2);
+  }
+
+  void fill () {
+    n = 4*nseg;
+    A.resize(n*n, 0);
+    cpolys.resize(n);
+    RPtr b = &cpolys[0];
+
+    int r = 0;
+    for (int k = 0; k < nseg; ++k) {
+      const int c = 4*k;
+      if (k == 0) {
+        fill_y_x ( 1, r  , c, xs[k]);
+        b[r] = y_x_beg;
+        ++r;
+      } else {
+        fill_y_x (-1, r-2, c, xs[k]);
+        fill_y_xx(-1, r-1, c, xs[k]);
+      }
+      fill_y(r  , c, xs[k  ]);
+      fill_y(r+1, c, xs[k+1]);
+      b[r  ] = ys[k  ];
+      b[r+1] = ys[k+1];
+      if (k == nseg-1) {
+        assert(r+2 == n-1);
+        fill_y_x (1, r+2, c, xs[k+1]);
+        b[r+2] = y_x_end;
+      } else {
+        fill_y_x (1, r+2, c, xs[k+1]);
+        fill_y_xx(1, r+3, c, xs[k+1]);
+        r += 4;
+        assert(r < n);
+      }
+    }
+
+    if (out)
+      for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+          if (A[idx(i,j)] == 0) printf("          ");
+          else printf(" %9.2e", A[idx(i,j)]);
+        }
+        if (b[i] == 0) printf(" |\n");
+        else printf(" | %9.2e\n", b[i]);
+      }
+  }
+
+  // At the end of this routine, a coefficient vector c gives
+  //     f(x) = sum_i=0^3 c[i] x^i.
+  void solve () {
+    RealArray R(n*n), rwrk(n);
+    std::vector<int> iwrk(n);
+    acorn::linalg::qr_fac(n, n, &A[0], &R[0], &iwrk[0]);
+    acorn::linalg::ls_slv(n, n, &A[0], &R[0], &iwrk[0], 1, &cpolys[0], &rwrk[0]);
+    if (out) {
+      for (int i = 0; i < n; ++i) printf(" %9.2e", cpolys[i]);
+      printf("\n");
+    }
+  }
+
+  // Evaluate in cpoly form.
+  static Real eval (CRPtr c, const Real x) {
+    return ((c[3]*x + c[2])*x + c[1])*x + c[0];
+  }
+  static Real eval_deriv (CRPtr c, const Real x) {
+    return (3*c[3]*x + 2*c[2])*x + c[1];
+  }
+
+  /* At the end of this routine, a coefficient vector c is in the form used in
+     BezierCubic:
+         t in [0,1], r = 1-t
+         t(x) = (x - xbeg)/(xend - xbeg)
+         f(x) = p(t(x)) = c[0] r^3 + c[1] r^2 t + c[2] r t^2 + c[3] t^3.
+     Now,
+         f'(x) = p'(t) t_x = p'(t)/(xend - xbeg)
+         p(0) = c[0]
+         p(1) = c[3]
+         p'(t) = -3 c[0] r^2 + r (r - 2 t) c[1] + t (2 r - t) c[2] + 3 c[3] t^2
+         p'(0) = -3 c[0] + c[1] => c[1] = f'(xbeg) (xend - xbeg) + 3 c[0]
+         p'(1) =  3 c[3] - c[2] => c[2] = 3 c[3] - f'(xend) (xend - xbeg).
+     BezierCubic is for a 2D parameterized curve, so we actually have c[0:7]
+     with 2-vectors for each of the four positions giving the coefficients for
+     (x,y), as in BezierCubic.
+  */ 
+  void convert () {
+    for (int is = 0; is < nseg; ++is) {
+      const Real d = xs[is+1] - xs[is];
+      CRPtr cpoly = &cpolys[4*is];
+      RPtr c = &cs[8*is];
+      // x. x_x(x) = 1.
+      c[0] = xs[is];
+      c[2] = d + 3*c[0];
+      c[6] = xs[is+1];
+      c[4] = 3*c[6] - d;
+      // y(x).
+      c[1] = eval(cpoly, xs[is]);
+      c[3] = d*eval_deriv(cpoly, xs[is]) + 3*c[1];
+      c[7] = eval(cpoly, xs[is+1]);
+      c[5] = 3*c[7] - d*eval_deriv(cpoly, xs[is+1]);
+    }
+    if (out) {
+      for (int i = 0; i < n; ++i) printf(" %9.2e", cs[2*i+1]);
+      printf("\n");
+    }
+  }
+
+  void run () {
+    fill();
+    solve();
+    convert();
+  }
+
+public:
+  static int unittest () {
+    int nerr = 0;
+    const auto f = [=] (const Real x) { return 0.3*x*x*x + 0.1*x*x - 0.5*x + 0.6; };
+    const auto g = [=] (const Real x) { return 3*0.3*x*x + 2*0.1*x - 0.5; };
+    const Real xs[] = {-0.75, -0.6, -0.3, 0.1, 0.9};
+    const int nseg = sizeof(xs)/sizeof(*xs) - 1;
+    Real ys[nseg+1];
+    for (int i = 0; i < nseg+1; ++i) ys[i] = f(xs[i]);
+    Real cs[8*nseg];
+    C2CubicSplineCoefs(nseg, xs, ys, g(xs[0]), g(xs[nseg]), cs);
+    for (int is = 0; is < 2; ++is) {
+      for (int i = 0; i < 11; ++i) {
+        Real p[2];
+        const Real
+          a = Real(i)/10,
+          x = (1-a)*xs[is] + a*xs[is+1],
+          y = f(x),
+          yp = g(x),
+          t = (x - xs[is])/(xs[is+1] - xs[is]);
+        bc::eval_p(&cs[8*is], t, p);
+        if (std::abs(p[0] - x) > 10*mv2::eps) {
+          pr(puf(is) pu(t) pu(x) pu(p[0] - x));
+          ++nerr;; 
+        }
+        if (std::abs(p[1] - y) > 1e3*mv2::eps) {
+          pr(puf(is) pu(x) pu(t) pu(y) pu(p[1] - y));
+          ++nerr;
+        }
+        bc::eval_pt(&cs[8*is], t, p);
+        const Real d = xs[is+1] - xs[is];
+        if (std::abs(p[0] - d) > 10*mv2::eps) {
+          pr("x_t" pu(is) pu(t) pu(d) pu(p[0] - d));
+          ++nerr;
+        }
+        if (std::abs(p[1] - yp*d) > 1e3*mv2::eps) {
+          pr("y_t" pu(is) pu(x) pu(t) pu(yp) pu(p[1] - yp*d));
+          ++nerr;
+        }
+      }
+    }
+    return 0;
+  }
+};
+
+static void calc_c2_cubic_spline_coefs (
+  // xs[0:nseg-1] is sorted ascending.
+  const int nseg, CRPtr xs, CRPtr ys,
+  // y'(x) at xs[0] and xs[nseg-1].
+  const Real y_x_beg, const Real y_x_end,
+  // cs has size 8*nseg. On output, its data are in the format BezierCubic uses.
+  RPtr cs)
+{
+  C2CubicSplineCoefs(nseg, xs, ys, y_x_beg, y_x_end, cs);
+}
+
+} // namespace
+
 ExtrudedCubicSplineSurface::ExtrudedCubicSplineSurface(
   const gallery::ZxFn::Shape zshape, const Triangulation::CPtr& t,
-  const bool use_exact_normals, const int nml_recon_order)
+  const Recon recon)
 {
-  init(zshape, t, use_exact_normals, nml_recon_order);
+  init(zshape, t, recon);
 }
 
 static void
-init_splines (const gallery::ZxFn::Shape zshape, const bool use_exact_normals,
-              const int nml_recon_order, const int nseg, const RealArray& xs,
-              const RealArray& zs, const RealArray& ps, RealArray& cs) {
-  // Normals.
-  RealArray nmls(2*(nseg+1));
-  if (use_exact_normals) {
+init_splines (const gallery::ZxFn::Shape zshape,
+              const ExtrudedCubicSplineSurface::Recon recon,
+              const int nseg, const RealArray& xs, const RealArray& zs,
+              const RealArray& ps, RealArray& cs) {
+  using Recon = ExtrudedCubicSplineSurface::Recon;
+
+  // Tangents.
+  RealArray tans(2*(nseg+1));
+  if (recon == Recon::c1_tan_exact) {
     for (int i = 0; i <= nseg; ++i) {
       Real z, zg;
       gallery::eval(zshape, ps[2*i], z, zg);
-      Real nml[] = {-zg, 1};
-      mv2::normalize(nml);
-      mv2::copy(nml, &nmls[2*i]);
+      Real tan[] = {1, zg};
+      mv2::copy(tan, &tans[2*i]);
     }
-  } else {
-    assert(nml_recon_order == 2 || nml_recon_order == 4);
-    const int npt = nml_recon_order/2;
+  } else if (recon == Recon::c1_tan_2 || recon == Recon::c1_tan_4) {
+    const int tan_recon_order = recon == Recon::c1_tan_2 ? 2 : 4;
+    const int npt = tan_recon_order/2;
     for (int ix = 0; ix <= nseg; ++ix) {
       int s0, s1;
       if (ix - npt < 0) {
@@ -69,20 +281,33 @@ init_splines (const gallery::ZxFn::Shape zshape, const bool use_exact_normals,
       }
       const Real z_x =
         acorn::eval_lagrange_poly_derivative(s1-s0+1, &xs[s0], &zs[s0], xs[ix]);
-      Real nml[] = {-z_x, 1};
-      mv2::normalize(nml);
-      mv2::copy(nml, &nmls[2*ix]);
+      Real tan[] = {1, z_x};
+      mv2::copy(tan, &tans[2*ix]);
     }
   }
 
+  // Lengths.
+  RealArray ds(nseg);
+  for (int i = 0; i < nseg; ++i)
+    ds[i] = ps[2*(i+1)] - ps[2*i];
+
   // Init the splines.
   cs.resize(8*nseg);
-  bc::init_from_nml(nseg, &ps[0], &nmls[0], &cs[0]);
+  if (recon == Recon::c2) {
+    const int n = std::min(nseg+1, 4), e0 = nseg-n+1;
+    const Real
+      z_x_beg = acorn::eval_lagrange_poly_derivative(n, &xs[0], &zs[0], xs[0]),
+      z_x_end = acorn::eval_lagrange_poly_derivative(n, &xs[e0], &zs[e0], xs[nseg]);
+    cs.resize(8*nseg);
+    calc_c2_cubic_spline_coefs(nseg, &xs[0], &zs[0], z_x_beg, z_x_end, &cs[0]);
+  } else {
+    bc::init_from_tan(nseg, &ps[0], &tans[0], &ds[0], &cs[0]);
+  }
 }
 
 void ExtrudedCubicSplineSurface
 ::init (const gallery::ZxFn::Shape zshape_, const Triangulation::CPtr& t_,
-        const bool use_exact_normals, const int nml_recon_order) {
+        const Recon recon) {
   zshape = zshape_;
   t = t_;
 
@@ -109,7 +334,7 @@ void ExtrudedCubicSplineSurface
   const int nseg = int(ps.size()/2)-1;
   assert(t->get_nvtx() % (nseg+1) == 0); // only ntri_per_rect=2 is allowed
 
-  init_splines(zshape, use_exact_normals, nml_recon_order, nseg, xs, zs, ps, cs);
+  init_splines(zshape, recon, nseg, xs, zs, ps, cs);
 
   // Fill triangle data.
   const auto ntri = t->get_ntri();
@@ -229,6 +454,9 @@ void ExtrudedCubicSplineSurface
 
 int ExtrudedCubicSplineSurface::unittest () {
   int nerr = 0;
+
+  nerr += C2CubicSplineCoefs::unittest();
+
   const auto zshape = gallery::ZxFn::Shape::trig1;
   const int nseg = 11;
   RealArray xs(nseg+1), zs(nseg+1), ps(2*(nseg+1)), cs;
@@ -240,7 +468,7 @@ int ExtrudedCubicSplineSurface::unittest () {
     ps[2*i+1] = zs[i];
   }
 
-  init_splines(zshape, true, -1, nseg, xs, zs, ps, cs);
+  init_splines(zshape, Recon::c1_tan_exact, nseg, xs, zs, ps, cs);
 
   //todo
 

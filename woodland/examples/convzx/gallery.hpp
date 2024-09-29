@@ -14,7 +14,7 @@ struct ZxFn {
   typedef std::shared_ptr<ZxFn> Ptr;
   typedef std::shared_ptr<const ZxFn> CPtr;
   
-  enum class Shape : int { zero = 0, ramp, quadratic, trig0, trig1 };
+  enum class Shape : int { zero = 0, ramp, quadratic, trig0, trig1, steep };
 
   static Shape convert(const std::string& shape);
   static std::string convert(const Shape shape);

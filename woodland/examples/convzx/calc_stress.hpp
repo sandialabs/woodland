@@ -49,7 +49,7 @@ struct Stress {
   // Does not require init_dislocs. (isrc_dislocs, isrc_coefs) fully describe
   // the dislocation in cell isrc. These are arrays having sizes for just one
   // cell.
-  void calc_s1_r1(CRPtr isrc_dislocs, CRPtr isrc_coefs,
+  void calc_s1_r1(const Real isrc_disloc[3], CRPtr isrc_coefs,
                   const Real lam, const Real mu,
                   const int isrc, const int ircv, const bool hfp,
                   Real sigma[6],
@@ -62,6 +62,7 @@ private:
   
   Discretization::CPtr d;
   const Real* dislocs_lcs;
+  mutable Workspace w;
   std::vector<Real> coefs;
 };
 

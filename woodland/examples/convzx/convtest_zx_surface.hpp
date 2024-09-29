@@ -12,14 +12,17 @@ namespace convzx {
 // Tensor product of a cubic Bezier spline in the x direction and 1 in the y
 // direction.
 struct ExtrudedCubicSplineSurface : public Surface {
+  enum class Recon { c1_tan_exact,
+                     c1_tan_2,
+                     c1_tan_4,
+                     c2 };
+  
   ExtrudedCubicSplineSurface(const gallery::ZxFn::Shape zshape,
                              const Triangulation::CPtr& t,
-                             const bool use_exact_normals,
-                             const int nml_recon_order = 4);
+                             const Recon recon = Recon::c1_tan_4);
 
   void init(const gallery::ZxFn::Shape zshape, const Triangulation::CPtr& t,
-            const bool use_exact_normals,
-            const int nml_recon_order = 4);
+            const Recon recon = Recon::c1_tan_4);
 
   Size get_ntri() const override;
   void tri_vtxs_uv(const Idx ti, Real tuv[6]) const override;

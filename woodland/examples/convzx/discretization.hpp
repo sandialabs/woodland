@@ -50,7 +50,7 @@ struct Surface {
   // Local coordinate system (LCS).
   virtual void tri_ctr_lcs(const Idx ti, Real lcs[9]) const = 0;
   
-  // Given a triangle and a barycentric coordinate, return position data.
+  // Given a triangle and a local coordinate, return position data.
   void tri_position1 (
     const Idx ti, const Real uv[2],
     // Global position.
@@ -178,7 +178,7 @@ private:
 };
 
 // Curved-surface area in the domain bounded by triangle ti.
-Real tri_surface_area(const Surface& s, const Idx ti);
+Real tri_surface_area(Workspace& w, const Surface& s, const Idx ti);
 
 void estimate_vertex_normals(const Triangulation& t, const std::vector<Idx>& v2tsi,
                              const std::vector<Idx>& v2ts, RPtr vtx_nmls,

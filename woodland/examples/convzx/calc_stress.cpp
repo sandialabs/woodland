@@ -47,10 +47,10 @@ calc_distance (const Triangulation& t, const Idx isrc, const Real rcv[3],
 struct Integrands : public acorn::CallerIntegrands {
   enum : int { ndisloc = 3, nsigma = 6 };
   
-  Integrands (const Discretization::CPtr& d_, CRPtr dislocs_lcs_, CRPtr coefs_,
-              const Real lam_, const Real mu_, const Idx isrc_)
-    : d(d_), srf(d->get_surface()), dislocs_lcs(dislocs_lcs_), coefs(coefs_),
-      lam(lam_), mu(mu_), isrc(isrc_)
+  Integrands (const Discretization::CPtr& d_, CRPtr disloc_ctr_lcs_,
+              CRPtr coefs_, const Real lam_, const Real mu_, const Idx isrc_)
+    : d(d_), srf(d->get_surface()), disloc_ctr_lcs(disloc_ctr_lcs_),
+      coefs(coefs_), lam(lam_), mu(mu_), isrc(isrc_)
   {
     srf->tri_vtxs_uv(isrc, t_uv);
 
@@ -100,7 +100,7 @@ struct Integrands : public acorn::CallerIntegrands {
     RPtr disloc_lcs = jacdet + n;
 
     srf->tri_position(isrc, n, xys_lcs, p_gcs, lcs, jacdet);
-    d->tri_reconstruct_ti(isrc, ndisloc, coefs, n, dislocs_lcs, xys_lcs,
+    d->tri_reconstruct_ti(isrc, ndisloc, coefs, n, disloc_ctr_lcs, xys_lcs,
                           disloc_lcs);
 
     for (int k = 0; k < n; ++k) {
@@ -122,7 +122,7 @@ struct Integrands : public acorn::CallerIntegrands {
   Discretization::CPtr d;
   Surface::CPtr srf;
   // source data
-  CRPtr dislocs_lcs, coefs;
+  CRPtr disloc_ctr_lcs, coefs;
   Real lam, mu;
   Idx isrc;
   // receiver data
@@ -159,7 +159,7 @@ void Stress
 }
 
 void Stress
-::calc_s1_r1 (CRPtr isrc_dislocs, CRPtr isrc_coefs,
+::calc_s1_r1 (const Real isrc_disloc[3], CRPtr isrc_coefs,
               const Real lam, const Real mu,
               const int isrc, const int ircv,
               const bool hfp, Real sigma_out[6],
@@ -167,7 +167,7 @@ void Stress
   assert(d);
   assert(isrc >= 0 && isrc < d->get_triangulation()->get_ntri());
 
-  Integrands igs(d, isrc_dislocs, isrc_coefs, lam, mu, isrc);
+  Integrands igs(d, isrc_disloc, isrc_coefs, lam, mu, isrc);
   const auto src_polygon = igs.get_src_polygon();
 
   const auto srf = d->get_surface();
@@ -200,7 +200,7 @@ void Stress
 
     Real rcv_lcs[2];
     srf->tri_ctr_uv(ircv, rcv_lcs);
-    acorn::integrals::calc_hfp(io, src_polygon, rcv_lcs, igs, sigma);
+    acorn::integrals::calc_hfp(w, io, src_polygon, rcv_lcs, igs, sigma);
     if (info) info->hfp = true;
   } else {
     if (o.use_calc_integral_tensor_quadrature) {
@@ -211,12 +211,13 @@ void Stress
         srf->tri_ctr_uv(isrc, pt);
       }
       acorn::integrals::calc_integral_tensor_quadrature(
-        io, src_polygon, igs, pt, nearest_pt, sigma);
+        w, io, src_polygon, igs, pt, nearest_pt, sigma);
     } else {
       const int triquad_order = (o.qp.triquad_order <= 0 ?
                                  acorn::get_triquad_order(L, dist) :
                                  o.qp.triquad_order);
-      acorn::integrals::calc_integral(src_polygon, igs, sigma, triquad_order);
+      acorn::integrals::calc_integral(w, src_polygon, igs, sigma,
+                                      triquad_order);
       if (info) info->triquad_order = triquad_order;
     }
   }
@@ -228,7 +229,7 @@ void Stress
         Real pt[2];
         srf->tri_ctr_uv(isrc, pt);
         acorn::integrals::calc_integral_tensor_quadrature(
-          io, src_polygon, igs, pt, false, sigma);
+          w, io, src_polygon, igs, pt, false, sigma);
       } else {
         Real pt[2];
         const bool nearest_pt = srf->calc_tri_lcs(ircv, rcv_gcs, pt);
@@ -237,14 +238,15 @@ void Stress
           srf->tri_ctr_uv(isrc, pt);
         }
         acorn::integrals::calc_integral_tensor_quadrature(
-          io, src_polygon, igs, pt, nearest_pt, sigma);        
+          w, io, src_polygon, igs, pt, nearest_pt, sigma);        
       }
     } else {
       const auto dist_mirror = igs.get_src_rcv_dist_mirror();
       const int triquad_order = (o.qp.triquad_order <= 0 ?
                                  acorn::get_triquad_order(L, dist_mirror) :
                                  o.qp.triquad_order);
-      acorn::integrals::calc_integral(src_polygon, igs, sigma, triquad_order);
+      acorn::integrals::calc_integral(w, src_polygon, igs, sigma,
+                                      triquad_order);
       if (info) info->triquad_order_halfspace = triquad_order;              
     }
   }

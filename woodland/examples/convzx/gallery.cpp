@@ -20,6 +20,7 @@ ZxFn::Shape ZxFn::convert (const std::string& shape) {
   if (shape == "quadratic") return Shape::quadratic;
   if (shape == "trig0") return Shape::trig0;
   if (shape == "trig1") return Shape::trig1;
+  if (shape == "steep") return Shape::steep;
   if (shape == "zero") return Shape::zero;
   fprintf(stderr, "ZxFn::convert: invalid shape %s\n", shape.c_str());
   return Shape::zero;
@@ -31,6 +32,7 @@ std::string ZxFn::convert (const Shape shape) {
   case Shape::quadratic: return "quadratic";
   case Shape::trig0: return "trig0";
   case Shape::trig1: return "trig1";
+  case Shape::steep: return "steep";
   case Shape::zero:
   default:
     return "zero";
@@ -54,9 +56,10 @@ void eval (const ZxFn::Shape shape, const Real x, Real& f, Real& g) {
     f = a*(1 + std::cos(b*(x - 0.5))) - 0.33;
     g = -a*b*std::sin(b*(x - 0.5));
   } break;
-  case ZxFn::Shape::trig1: {
-    const Real a = 0.3, b = 2*M_PI;
-    f = a*x*std::sin(b*x) - 0.12;
+  case ZxFn::Shape::trig1:
+  case ZxFn::Shape::steep: {
+    const Real a = shape == ZxFn::Shape::steep ? 0.9 : 0.3, b = 2*M_PI;
+    f = a*(x*std::sin(b*x) - 0.4);
     g = a*(std::sin(b*x) + x*b*std::cos(b*x));
   } break;
   case ZxFn::Shape::zero:

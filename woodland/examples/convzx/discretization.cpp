@@ -399,11 +399,11 @@ private:
   const Idx ti;
 };
 
-Real tri_surface_area (const Surface& srf, const Idx ti) {
+Real tri_surface_area (Workspace& w, const Surface& srf, const Idx ti) {
   Real vtxs_lcs[6], area = 0;
   srf.tri_vtxs_uv(ti, vtxs_lcs);
   const acorn::integrals::Polygon polygon(vtxs_lcs, 3);
-  acorn::integrals::calc_integral(polygon, Area(srf, ti), &area);
+  acorn::integrals::calc_integral(w, polygon, Area(srf, ti), &area);
   return area;
 }
 

@@ -131,6 +131,11 @@ inline int mirror_tri (const int ix) {
   return ix;
 }
 
+//todo-speedup Do one eval of the GF for all coefs of the dislocation
+// component-i representation. Particularly helpful for the halfspace terms,
+// which are expensive. Requires removing the CallerIntegrands::max_n_integrand
+// = 6 constraint and reworking Stress::calc_s1_r1.
+
 void ConvTest::eval_fast (const RealArray& dislocs, RealArray& sigmas) const {
   const auto& t = *d->get_triangulation();
   const auto& tr = *d->get_triangulation_relations();
@@ -429,7 +434,7 @@ void ConvTest
           Real dglbl[3], s[6];
           acorn::tmatvec(sxhat, yhat, snml, disloc, dglbl);
           acorn::hs3d::calc_sigma_const_disloc_rect(
-            lam, mu, src, snml, yhat, slengths, dglbl, rcv, s,
+            w, lam, mu, src, snml, yhat, slengths, dglbl, rcv, s,
             use_halfspace, not use_woodland_rg0c0, 20, 20);
           acorn::rotate_sym_tensor_3x3_RARt(rxhat, yhat, rnml, s);
           acorn::copy(6, s, &gfs[6*(3*iy + id)]);
@@ -536,7 +541,7 @@ void ConvTest
       // lengths to accommodate this.
       std::swap(lengths[0], lengths[1]);
       acorn::hs3d::calc_sigma_const_disloc_rect(
-        lam, mu, src, nml, yhat, lengths, dglbl, rcv, s,
+        w, lam, mu, src, nml, yhat, lengths, dglbl, rcv, s,
         use_halfspace, not use_woodland_rg0c0, 20, 20);
       for (int i = 0; i < 6; ++i) sigma[i] += s[i];
     }

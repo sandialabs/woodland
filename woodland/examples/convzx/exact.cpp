@@ -170,20 +170,21 @@ void Exact::calc_stress (const Real x, const Real y, Real sigma_lcs[6]) const {
       }
       const auto poly = igs.get_src_polygon();
       if (hfp)
-        acorn::integrals::calc_hfp(io, poly, rcv, igs, sigma);
+        acorn::integrals::calc_hfp(w, io, poly, rcv, igs, sigma);
       else if (tensor_quad)
         acorn::integrals::calc_integral_tensor_quadrature(
-          io, poly, igs, rcv, true, sigma);
+          w, io, poly, igs, rcv, true, sigma);
       else
-        acorn::integrals::calc_integral(poly, igs, sigma, triquad_order);
+        acorn::integrals::calc_integral(w, poly, igs, sigma, triquad_order);
       if (halfspace) {
         igs.set_halfspace(true);
         if (tri_quad) {
           assert(triquad_order_hs > 0);
-          acorn::integrals::calc_integral(poly, igs, sigma, triquad_order_hs);
+          acorn::integrals::calc_integral(w, poly, igs, sigma,
+                                          triquad_order_hs);
         } else {
           acorn::integrals::calc_integral_tensor_quadrature(
-            io, poly, igs, rcv, not hfp, sigma);
+            w, io, poly, igs, rcv, not hfp, sigma);
         }
       }
     }

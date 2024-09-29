@@ -70,9 +70,14 @@ void ConvTest::set_use_surface_recon (const bool use) {
   use_surface_recon = use;
 }
 
-void ConvTest::set_use_exact_normals (const bool use) {
-  if (use != use_exact_normals) { t = nullptr; d = nullptr; }
-  use_exact_normals = use;
+void ConvTest::set_use_exact_tangents (const bool use) {
+  if (use != use_exact_tangents) { t = nullptr; d = nullptr; }
+  use_exact_tangents = use;
+}
+
+void ConvTest::set_use_c2_spline (const bool use) {
+  if (use != use_c2_spline) { t = nullptr; d = nullptr; }
+  use_c2_spline = use;
 }
 
 void ConvTest::set_use_halfspace (const bool use) {
@@ -84,8 +89,8 @@ void ConvTest::set_hmmvp_tol (const Real tol) {
 }
 
 void ConvTest::set_normal_recon_order (const int order) {
-  if (order != nml_recon_order) { t = nullptr; d = nullptr; }
-  nml_recon_order = order;
+  if (order != tan_recon_order) { t = nullptr; d = nullptr; }
+  tan_recon_order = order;
 }
 
 void ConvTest::set_disloc_order (const int order) {
@@ -113,9 +118,10 @@ void ConvTest::print (FILE* fp) const {
   fprintf(fp, "ct> lam %1.3e mu %1.3e halfspace %d\n",
           lam, mu, int(use_halfspace));
   fprintf(fp, "ct> ntriperrect %d dislocorder %d exactsrf %d flatelem %d"
-          " exactnml %d nmlorder %d\n",
+          " exacttan %d tanorder %d c2spline %d\n",
           ntri_per_rect, disloc_order, int(not use_surface_recon),
-          int(use_flat_elements), int(use_exact_normals), nml_recon_order);
+          int(use_flat_elements), int(use_exact_tangents), tan_recon_order,
+          int(use_c2_spline));
   fprintf(fp, "ct> zshape %s\n", ZxFn::convert(zxfn->get_shape()).c_str());
   if (use_woodland_rg0c0) printf("ct> using woodland impl of rg0c0\n");
   if (disloc)
@@ -232,8 +238,9 @@ struct Param2DUserFn : public ExactParam2DSurface::UserFn {
 
 Discretization::Ptr ConvTest
 ::discretize (const Triangulation::Ptr& t, const ZxFn::Shape shape,
-              const bool use_surface_recon, const bool use_exact_normals,
-              const int nml_recon_order, const bool use_flat_elements) {
+              const bool use_surface_recon, const bool use_exact_tangents,
+              const int tan_recon_order, const bool use_flat_elements,
+              const bool use_c2_spline) {
   const auto tr = std::make_shared<TriangulationRelations>(t);
   Surface::CPtr s;
   if (use_surface_recon) {
@@ -241,8 +248,13 @@ Discretization::Ptr ConvTest
       const Real primary[] = {1,0,0};
       s = std::make_shared<FlatElementSurface>(t, primary);
     } else {
-      s = std::make_shared<ExtrudedCubicSplineSurface>(
-        shape, t, use_exact_normals, nml_recon_order);
+      using Recon = ExtrudedCubicSplineSurface::Recon;
+      const auto recon = (use_c2_spline ? Recon::c2 :
+                          use_exact_tangents ? Recon::c1_tan_exact :
+                          tan_recon_order == 2 ? Recon::c1_tan_2 :
+                          Recon::c1_tan_4);
+      assert(recon != Recon::c1_tan_4 || tan_recon_order == 4);
+      s = std::make_shared<ExtrudedCubicSplineSurface>(shape, t, recon);
     }
   } else {
     const auto ufn = std::make_shared<Param2DUserFn>(shape);
@@ -326,8 +338,8 @@ pywrite_zxfn (const std::string& python_filename, const ZxFn& zxfn,
 
 void ConvTest::discretize () {
   t = triangulate(*zxfn, ntri_per_rect);
-  d = discretize(t, zxfn->get_shape(), use_surface_recon,
-                 use_exact_normals, nml_recon_order, use_flat_elements);
+  d = discretize(t, zxfn->get_shape(), use_surface_recon, use_exact_tangents,
+                 tan_recon_order, use_flat_elements, use_c2_spline);
   d->set_disloc_order(disloc_order);
 }
 
@@ -384,6 +396,10 @@ setup (const int testcase, ZxFn::Shape& zshape, Disloc::Ptr& disloc,
     zshape = ZxFn::Shape::trig0;
     disloc->set(testcase - 30, dshape, 1, 0.5, 0.5, 1, 0, r, r);
     break;
+  case 40: case 41: case 42:
+    zshape = ZxFn::Shape::steep;
+    disloc->set(testcase - 40, dshape, 1, 0.5, 0.5, 1, 0, r, r);
+    break;
   case 0: case 1: case 2: case 3:
   default:
     zshape = (testcase == 0 ? ZxFn::Shape::trig1 :
@@ -409,10 +425,11 @@ calc_errors (const RealArray& s_true, const RealArray& s, Real l2_err[6],
   const auto nthr = acorn::get_max_threads();
   const int naccum = 24;
   std::vector<Real> a(nthr*naccum, 0);
+  Workspace w;
   ompparfor for (int ti = 0; ti < ncell; ++ti) {
     const auto tid = acorn::get_thread_num();
     auto ai = &a[tid*naccum];
-    const auto area = srf ? tri_surface_area(*srf, ti) : 1;
+    const auto area = srf ? tri_surface_area(w, *srf, ti) : 1;
     for (int i = 0; i < 6; ++i) {
       const auto den = s_true[6*ti+i];
       const auto diff = s[6*ti+i] - den;
@@ -515,10 +532,11 @@ struct ConvTestSettings {
   bool use_four_tris_per_rect = false;
   bool use_surface_recon = true;
   bool use_flat_elements = false;
-  bool use_exact_normals = false;
+  bool use_exact_tangents = false;
+  bool use_c2_spline = false;
   bool use_woodland_rg0c0 = false;
   bool use_halfspace = false;
-  int nml_recon_order = 4;
+  int tan_recon_order = 4;
   int disloc_order = 2;
   int e_max = -1;
   Real r = 0.8;
@@ -537,8 +555,9 @@ static void print_valid_pairs () {
          "  ntri: 2, 4 [2]\n"
          "  srfrecon: bool (0,1) [1]\n"
          "  flatelem: bool [0]\n"
-         "  exactnml: bool [0]\n"
-         "  nmlorder: 2, 4 [4]\n"
+         "  exacttan: bool [0]\n"
+         "  tanorder: 2, 4 [4]\n"
+         "  c2spline: bool [0]"
          "  dislocorder: 0, 1, 2, 3 [2]\n"
          "  nres: int > 0 [-1]\n"
          "  woodlandrect: bool [0]\n"
@@ -561,8 +580,9 @@ void ConvTestSettings::set (const std::string& params) {
     else if (in("ntri", key)) use_four_tris_per_rect = ival == 4;
     else if (in("srfrecon", key)) use_surface_recon = ival;
     else if (in("flatelem", key)) use_flat_elements = ival;
-    else if (in("exactnml", key)) use_exact_normals = ival;
-    else if (in("nmlorder", key)) nml_recon_order = ival;
+    else if (in("exacttan", key)) use_exact_tangents = ival;
+    else if (in("tanorder", key)) tan_recon_order = ival;
+    else if (in("c2spline", key)) use_c2_spline = ival;
     else if (in("dislocorder", key)) disloc_order = ival;
     else if (in("nres", key)) e_max = ival - 1;
     else if (in("woodlandrect", key)) use_woodland_rg0c0 = ival;
@@ -589,11 +609,12 @@ void set_settings (const ConvTestSettings& s, ConvTest& ct) {
   ct.set_verbosity(1);
   ct.set_use_four_tris_per_rect(s.use_four_tris_per_rect);
   ct.set_use_surface_recon(s.use_surface_recon);
-  ct.set_use_exact_normals(s.use_exact_normals);
+  ct.set_use_exact_tangents(s.use_exact_tangents);
+  ct.set_use_c2_spline(s.use_c2_spline);
   ct.set_use_flat_elements(s.use_flat_elements);
   ct.set_use_woodland_rg0c0(s.use_woodland_rg0c0);
   ct.set_use_halfspace(s.use_halfspace);
-  ct.set_normal_recon_order(s.nml_recon_order);
+  ct.set_normal_recon_order(s.tan_recon_order);
   ct.set_disloc_order(s.disloc_order);
   ct.set_general_lam_mu();
 }
@@ -941,7 +962,7 @@ static int test_fast_woodland_methods () {
   ct.init(zshape, disloc);
   ct.set_verbosity(0);
   ct.set_use_surface_recon(0);
-  ct.set_use_exact_normals(1);
+  ct.set_use_exact_tangents(1);
   ct.set_disloc_order(2);
 
   for (const bool use_four : {false, true}) {

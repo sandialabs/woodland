@@ -6,22 +6,50 @@ namespace acorn {
 
 template <typename Real>
 void BezierCubic<Real>
+::init_from_tan (CRPtr p1, CRPtr m1, CRPtr p2, CRPtr m2, const Real d, RPtr c) {
+  /* Derivation:
+       Given end points p1, p2 and end-point tangent vectors m1, m2.
+       Let c1, c2 be the two internal control points.
+       Let r = 1-t.
+       For t in [0,1],
+         p(t) = p1 r^3 + c1 r^2 t + c2 r t^2 + p2 t^3.
+         p_t(t) = -3 p1 r^2 + r (r - 2 t) c1 + t (2 r - t) c2 + 3 p2 t^2
+         p_t(0) = d m1 = -3 p1 + c1 => c1 = 3 p1 + d m1
+         p_t(1) = d m2 =  3 p2 - c2 => c2 = 3 p2 - d m2.
+   */
+  v2::copy(p1, c  );
+  v2::copy(p2, c+6);
+  v2::axpbyz(3, p1,  d, m1, c+2);
+  v2::axpbyz(3, p2, -d, m2, c+4);
+}
+
+template <typename Real>
+void BezierCubic<Real>
+::init_from_tan (const int n, CRPtr ps, CRPtr ms, CRPtr ds, RPtr cs) {
+  ompfor for (int i = 0; i < n; ++i)
+    init_from_tan(&ps[2*i], &ms[2*i], &ps[2*(i+1)], &ms[2*(i+1)], ds[i],
+                  &cs[8*i]);
+}
+
+template <typename Real>
+void BezierCubic<Real>
 ::init_from_nml (CRPtr p1, CRPtr n1, CRPtr p2, CRPtr n2, RPtr c, Real d) {
   /* Derivation:
-     given end points p1, p2 and end-point normal unit vectors n1, n2.
-     let c1, c2 be the two internal control points.
-     let r = 1-t.
-     let perpcw(n) = [n(2); -n(1)].
-     for t in [0,1],
-     p(t) = p1 r^3 + c1 r^2 t + c2 r t^2 + p2 t^3.
-     p_t(t) = -3 p1 r^2 + r (r - 2 t) c1 + t (2 r - t) c2 + 3 p2 t^2
-     p_t(0) = d perpcw(n1) = -3 p1 + c1 => c1 = 3 p1 + d perpcw(n1)
-     p_t(1) = d perpcw(n2) =  3 p2 - c2 => c2 = 3 p2 - d perpcw(n2)
-     rule: choose path from p1 to p2 that is the shorter of the two
-     possible. this leads to inserting the following sign factor:
-     sgn = sign(dot(p_t(0), p2-p1))
-     c1 = 3 p1 + sgn d perpcw(n1)
-     c2 = 3 p2 - sgn d perpcw(n2)
+       Given end points p1, p2 and end-point normal unit vectors n1, n2.
+       Let c1, c2 be the two internal control points.
+       Let r = 1-t.
+       Let perpcw(n) = [n(2); -n(1)].
+       For t in [0,1],
+         p(t) = p1 r^3 + c1 r^2 t + c2 r t^2 + p2 t^3.
+         p_t(t) = -3 p1 r^2 + r (r - 2 t) c1 + t (2 r - t) c2 + 3 p2 t^2
+         p_t(0) = d perpcw(n1) = -3 p1 + c1 => c1 = 3 p1 + d perpcw(n1)
+         p_t(1) = d perpcw(n2) =  3 p2 - c2 => c2 = 3 p2 - d perpcw(n2)
+       Rule: Choose the path from p1 to p2 that is the shorter of the two
+     possible. This leads to inserting the following sign factor:
+         sgn = sign(dot(p_t(0), p2-p1)).
+     Then
+         c1 = 3 p1 + sgn d perpcw(n1)
+         c2 = 3 p2 - sgn d perpcw(n2).
   */
   assert(std::abs(v2::norm22(n1) - 1) < 1e2*eps);
   assert(std::abs(v2::norm22(n2) - 1) < 1e2*eps);
@@ -221,9 +249,14 @@ int BezierCubic<Real>::unittest () {
   int nerr = 0;
   BezierCubic<Real> bc;
   Quadrature q;
-  {
-    Real p1[] = {0,0}, p2[] = {1,0}, n1[] = {0,1}, n2[] = {0,1}, c[8];
-    bc.init_from_nml(p1, n1, p2, n2, c);
+  for (int tno = 0; tno < 2; ++tno){
+    const Real p1[] = {0,0}, p2[] = {1,0}, n1[] = {0,1}, n2[] = {0,1},
+      m1[] = {1,0}, m2 [] = {1,0};
+    Real c[8];
+    if (tno == 0)
+      bc.init_from_nml(p1, n1, p2, n2, c);
+    else
+      bc.init_from_tan(p1, m1, p2, m2, p2[0] - p1[0], c);
     Real t = 0.5, p[2], pt[2], ptt[2];
     bc.eval_p  (c, t, p  );
     bc.eval_pt (c, t, pt );
@@ -265,16 +298,23 @@ int BezierCubic<Real>::unittest () {
   {
     typedef Matvec2d<Real> v2;
     const Real ths[] = {0, 0.01*M_PI}, fac = 3.2;
-    Real ps[2][2], ns[2][2], c[8];
+    Real ps[2][2], ns[2][2], ms[2][2];
     for (int i = 0; i < 2; ++i) {
       ps[i][0] = fac*std::cos(ths[i]); ps[i][1] = fac*std::sin(ths[i]);
       v2::copy(ps[i], ns[i]);
       v2::normalize(ns[i]);
+      ms[i][0] = -fac*std::sin(ths[i]); ms[i][1] = fac*std::cos(ths[i]);
     }
-    bc.init_from_nml(ps[0], ns[0], ps[1], ns[1], c);
-    for (const Real t : {0.1, 0.5, 0.8}) {
-      const auto R = bc.calc_radius_of_curvature(c, t);
-      if (std::abs(R - fac) > 1e-3) ++nerr;
+    for (int tno = 0; tno < 2; ++tno) {
+      Real c[8];
+      if (tno == 0)
+        bc.init_from_nml(ps[0], ns[0], ps[1], ns[1], c);
+      else
+        bc.init_from_tan(ps[0], ms[0], ps[1], ms[1], ths[1]-ths[0], c);
+      for (const Real t : {0.1, 0.5, 0.8}) {
+        const auto R = bc.calc_radius_of_curvature(c, t);
+        if (std::abs(R - fac) > 1e-3) ++nerr;
+      }
     }
   }
   return nerr;

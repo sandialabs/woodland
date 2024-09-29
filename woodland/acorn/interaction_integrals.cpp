@@ -129,9 +129,16 @@ typedef Matvec2d<Real> mv2;
 struct EvalAccumulator {
   enum : int { capacity = RealPack::n };
 
-  EvalAccumulator (const CallerIntegrands& f_)
+  static int get_wrk_nbyte (const CallerIntegrands& f) {
+    return f.nintegrands()*(capacity + 1)*sizeof(Real);
+  }
+
+  // wrk size nint*(capacity + 1).
+  EvalAccumulator (RPtr wrk, const CallerIntegrands& f_)
     : f(f_), nint(f.nintegrands()), n(0)
   {
+    integrand = wrk;
+    integral = wrk + nint*capacity;
     for (int i = 0; i < nint; ++i) integral[i] = 0;
   }
   
@@ -153,8 +160,8 @@ private:
   const int nint;
   int n;
   Real pts[2*capacity], wts[capacity];
-  Real integrand[CallerIntegrands::max_n_integrand*capacity];
-  Real integral[CallerIntegrands::max_n_integrand];
+  Real* integrand;
+  Real* integral;
 
   void flush () {
     if ( ! n) return;
@@ -184,13 +191,13 @@ static void calc_thetas(const Pt v0, const Pt v1, Real& th0, Real& th1) {
 
 // Input values are overwritten.
 static void calc_hfp_circle_arc_integral_times_rsquared (
-  const Options& o, const Pt cc, const Real r, const Real th0, const Real th1,
-  const CallerIntegrands& f, RPtr integral)
+  const Options& o, RPtr wrk, const Pt cc, const Real r, const Real th0,
+  const Real th1, const CallerIntegrands& f, RPtr integral)
 {
   assert(is_gll_supported(o.np_angular));
   const auto* const qth = get_x_gll(o.np_angular);
   const auto* const wth = get_w_gll(o.np_angular);
-  EvalAccumulator ea(f);
+  EvalAccumulator ea(wrk, f);
   // Factor is as follows:
   //     (1/2 for [-1,1] quadrature)
   //   * (|th1 - th0| r for circle circumference)
@@ -224,20 +231,28 @@ bool RadialP::in_support (const Real x) const {
   return x >= 0 && x <= xs[n-1];
 }
 
+static int
+get_circular_sector_term_wrk_nbyte (const Options& o, const CallerIntegrands& f) {
+  return (f.nintegrands()*(o.np_radial + 1)*sizeof(Real) +
+          EvalAccumulator::get_wrk_nbyte(f));
+}
+
 static void
-calc_hfp_circular_sector_term (const Options& o, const Pt cc, const Real R,
-                               const Real th0, const Real th1,
+calc_hfp_circular_sector_term (const Options& o, Real* wrk, const Pt cc,
+                               const Real R, const Real th0, const Real th1,
                                const CallerIntegrands& f, RPtr hfps) {
   const auto R_min = f.permitted_R_min(R);
   assert(R_min < R);
   const int nintegrands = f.nintegrands();
 
   Real radii[Quadrature::max_nq];
-  Real radial_integrand[CallerIntegrands::max_n_integrand][Quadrature::max_nq];
+  RPtr radial_integrand = wrk;
+  wrk += nintegrands*o.np_radial;
+  RPtr integral = wrk;
+  wrk += nintegrands;
 
-  for (int i = 0; i < nintegrands; ++i)
-    for (int j = 0; j < o.np_radial; ++j)
-      radial_integrand[i][j] = 0;
+  for (int i = 0; i < nintegrands*o.np_radial; ++i)
+    radial_integrand[i] = 0;
   
   { // Form the integrand in r from R_min to R.
     assert(is_gll_supported(o.np_radial));
@@ -246,11 +261,10 @@ calc_hfp_circular_sector_term (const Options& o, const Pt cc, const Real R,
       const auto a_gl = j == 0 ? 0 : j == o.np_radial-1 ? 1 : (1 + qr[j])/2;
       const auto r = a_gl*R + (1 - a_gl)*R_min;
       radii[j] = r;
-      Real integral[CallerIntegrands::max_n_integrand];
-      calc_hfp_circle_arc_integral_times_rsquared(o, cc, r, th0, th1, f,
+      calc_hfp_circle_arc_integral_times_rsquared(o, wrk, cc, r, th0, th1, f,
                                                   integral);
       for (int i = 0; i < nintegrands; ++i)
-        radial_integrand[i][j] = integral[i];
+        radial_integrand[o.np_radial*i + j] = integral[i];
     }
   }
 
@@ -258,12 +272,12 @@ calc_hfp_circular_sector_term (const Options& o, const Pt cc, const Real R,
     hfp::Options o1d;
     o1d.gl_np = o.np_radial;
     for (int i = 0; i < nintegrands; ++i) {
-      RadialP p(o.np_radial, radii, radial_integrand[i]);
+      RadialP p(o.np_radial, radii, &radial_integrand[o.np_radial*i]);
       hfps[i] += hfp::calc_hfp(o1d, p, 0, R, 0);
 #ifdef WOODLAND_ACORN_FIGURE
       if (g_fig)
         g_fig->circular_sector_term_1(o, th0, th1, cc, R, radii,
-                                      radial_integrand[i], i);
+                                      &radial_integrand[o.np_radial*i], i);
 #endif
     }
   }
@@ -302,7 +316,7 @@ calc_hfp_circular_sector_term (const Options& o, const Pt cc, const Real R,
 // In this routine, v and p_top are w.r.t. a center at 0. cc is used to
 // translate to the caller's coordinates.
 static void
-calc_integral_radtricirc (const Options& o, const Pt cc, const Real R,
+calc_integral_radtricirc (const Options& o, RPtr wrk, const Pt cc, const Real R,
                           const Pt v, const Pt p_top, const CallerIntegrands& f,
                           RPtr integrals) {
   const int nint = f.nintegrands();
@@ -326,7 +340,7 @@ calc_integral_radtricirc (const Options& o, const Pt cc, const Real R,
   mv2::copy(v, p_base);
   mv2::scale(R/Rv, p_base);
 
-  EvalAccumulator ea(f);
+  EvalAccumulator ea(wrk, f);
   Real t0, t1;
   calc_thetas(p_base, p_top, t0, t1);
   const auto ct0 = std::cos(t0), st0 = std::sin(t0);
@@ -367,10 +381,14 @@ static void decompose_tri (const Pt v1, const Pt v2,
   R02 = mv2::norm22(pt);
 }
 
-bool calc_hfp (const Options& o, const Polygon& p, const Pt cc,
+bool calc_hfp (Workspace& w, const Options& o, const Polygon& p, const Pt cc,
                const CallerIntegrands& f, RPtr hfps) {
   const int nint = f.nintegrands();
-  Real ghfps[CallerIntegrands::max_n_integrand] = {0};
+  w.set_cap(2*nint*sizeof(Real) + get_circular_sector_term_wrk_nbyte(o, f));
+  RPtr ghfps = static_cast<Real*>(w.get());
+  for (int i = 0; i < nint; ++i) ghfps[i] = 0;
+  RPtr lhfps = ghfps + nint;
+  RPtr wrk = lhfps + nint;
   Real area = 0; // signed area of p
   for (int ie = 0; ie < p.n; ++ie) {
     // Compute decomposition of triangle (cc, poly vtx ie, poly vtx (ie+1)%n)
@@ -390,14 +408,14 @@ bool calc_hfp (const Options& o, const Polygon& p, const Pt cc,
 #ifdef WOODLAND_ACORN_FIGURE
     if (g_fig) g_fig->calc_hfp_1(p, cc, f, ie);
 #endif
-    Real lhfps[CallerIntegrands::max_n_integrand] = {0};
+    for (int i = 0; i < nint; ++i) lhfps[i] = 0;
     // H.f.p. over the circular sector.
-    calc_hfp_circular_sector_term(o, cc, R0, th0, th1, f, lhfps);
+    calc_hfp_circular_sector_term(o, wrk, cc, R0, th0, th1, f, lhfps);
     // Integrals over the radtricirc(s).
     if (pt_top_at >= 0)
-      calc_integral_radtricirc(o, cc, R0, v0, pt_top, f, lhfps);
+      calc_integral_radtricirc(o, wrk, cc, R0, v0, pt_top, f, lhfps);
     if (pt_top_at <= 0)
-      calc_integral_radtricirc(o, cc, R0, v1, pt_top, f, lhfps);
+      calc_integral_radtricirc(o, wrk, cc, R0, v1, pt_top, f, lhfps);
     // Multiply by -1 if the triangle is CW, 1 if CCW. At the end, we compensate
     // for the signed area of p so that p can be CW or CCW.
     //   The result of accounting for sign is that cc can be outside of p. If cc
@@ -415,8 +433,8 @@ bool calc_hfp (const Options& o, const Polygon& p, const Pt cc,
 }
 
 static void
-calc_integral (const int tq_order, const Pt a, const Pt b, const Pt c,
-               const CallerIntegrands& f, RPtr integral) {
+calc_integral (Workspace& w, const int tq_order, const Pt a, const Pt b,
+               const Pt c, const CallerIntegrands& f, RPtr integral) {
   const int nint = f.nintegrands();
 
   const Real* qx, * qw;
@@ -425,7 +443,8 @@ calc_integral (const int tq_order, const Pt a, const Pt b, const Pt c,
 
   const Real tri_area = Triangle2D::calc_signed_area(a, b, c);
 
-  EvalAccumulator ea(f);
+  RPtr wrk = static_cast<Real*>(w.set_cap(EvalAccumulator::get_wrk_nbyte(f)));
+  EvalAccumulator ea(wrk, f);
   for (int iq = 0; iq < nq; ++iq) {
     Pt x;
     Triangle2D::barycentric_to_xy(a, b, c, &qx[3*iq], x);
@@ -436,21 +455,21 @@ calc_integral (const int tq_order, const Pt a, const Pt b, const Pt c,
     integral[i] += eai[i];
 }
 
-bool calc_integral (const Polygon& p, const CallerIntegrands& f, RPtr integral,
-                    const int tq_order) {
+bool calc_integral (Workspace& w, const Polygon& p, const CallerIntegrands& f,
+                    RPtr integral, const int tq_order) {
   assert(TriangleQuadrature::is_order_supported(tq_order));
   Pt centroid = {0};
   for (int i = 0; i < p.n; ++i)
     mv2::axpy(1, &p.xys[2*i], centroid);
   for (int d = 0; d < 2; ++d) centroid[d] /= p.n;
   for (int i = 0; i < p.n; ++i)
-    calc_integral(tq_order, centroid, &p.xys[2*i], &p.xys[2*((i+1)%p.n)], f,
+    calc_integral(w, tq_order, centroid, &p.xys[2*i], &p.xys[2*((i+1)%p.n)], f,
                   integral);
   return true;
 }
 
 bool calc_integral_tensor_quadrature (
-  const Options& o, const Polygon& p, const CallerIntegrands& f,
+  Workspace& w, const Options& o, const Polygon& p, const CallerIntegrands& f,
   const Pt anchor, const bool nearest_bdy_pt_to_anchor,
   RPtr integral)
 {
@@ -479,7 +498,8 @@ bool calc_integral_tensor_quadrature (
     p_area += std::abs(Triangle2D::calc_signed_area(
                          &p.xys[0], &p.xys[2*i], &p.xys[2*(i+1)]));
 
-  EvalAccumulator ea(f);
+  RPtr wrk = static_cast<Real*>(w.set_cap(EvalAccumulator::get_wrk_nbyte(f)));
+  EvalAccumulator ea(wrk, f);
   for (int tri = 0; tri < p.n; ++tri) {
     const auto v1 = &p.xys[2*tri], v2 = &p.xys[2*((tri+1)%p.n)];
     const Real area = std::abs(Triangle2D::calc_signed_area(p_common, v1, v2));
@@ -518,6 +538,7 @@ struct One : public CallerIntegrands {
 
 int test_area (const Polygon& p, const Pt cc) {
   int ne = 0;
+  Workspace w;
   Real area_true = 0;
   {
     Real pin[2] = {0};
@@ -531,14 +552,14 @@ int test_area (const Polygon& p, const Pt cc) {
   Options o;
   o.np_angular = 9;
   Real area = 0;
-  if ( ! calc_hfp(o, p, cc, One(), &area)) ++ne;
+  if ( ! calc_hfp(w, o, p, cc, One(), &area)) ++ne;
   if (std::abs(area - area_true) >= 1e3*area_true*mv2::eps) {
     printf("integrals::test_area (hfp) %1.3f %1.2e\n",
            area, std::abs(area - area_true)/area_true);
     ++ne;
   }
   area = 0;
-  if ( ! calc_integral(p, One(), &area)) ++ne;
+  if ( ! calc_integral(w, p, One(), &area)) ++ne;
   if (std::abs(area - area_true) >= 1e1*area_true*mv2::eps) {
     printf("otherint::test_area (integral) %1.3f %1.2e\n",
            area, std::abs(area - area_true)/area_true);
@@ -625,12 +646,16 @@ struct SingularTestIntegrands : public CallerIntegrands {
 
 int test_calc_hfp_circle () {
   int ne = 0;
+  Workspace w;
   { // circle term
     const Pt cc = {0};
     const Real R = 0.5;
     Real hfps[SingularTestIntegrands::nint] = {0};
     SingularTestIntegrands f;
-    calc_hfp_circular_sector_term(Options(), cc, R, 0, 2*M_PI, f, hfps);
+    Options o;
+    const auto nbyte = get_circular_sector_term_wrk_nbyte(o, f);
+    RPtr wrk = static_cast<Real*>(w.set_cap(nbyte));
+    calc_hfp_circular_sector_term(o, wrk, cc, R, 0, 2*M_PI, f, hfps);
     const int n = f.nintegrands();
     for (int i = 0; i < n; ++i) {
       const auto t = f.true_hfp_circle(i, R);
@@ -660,13 +685,14 @@ struct NonsingularTestIntegrands : public CallerIntegrands {
 
 int test_integral () {
   int ne = 0;
+  Workspace w;
   // Over [-2,1]x[-1,2].
   NonsingularTestIntegrands f;
   Real xys[] = {-2,-1, 1,-1, 1,2, -2,2};
   for (int i = 0; i < 4; ++i) mv2::axpy(1, f.cc, &xys[2*i]);
   const Polygon p(xys, 4);
   Real hfps[NonsingularTestIntegrands::nint] = {0};
-  if ( ! calc_hfp(Options(), p, f.cc, f, hfps)) ++ne;
+  if ( ! calc_hfp(w, Options(), p, f.cc, f, hfps)) ++ne;
   if (std::abs(hfps[0] - 45.0/4) > 1e4*mv2::eps) {
     printf("integrals::test_integral: %f %e\n",
            hfps[0], std::abs(hfps[0] - 45.0/4));
@@ -676,12 +702,12 @@ int test_integral () {
   for (int i = 0; i < 2; ++i) {
     Real integrals[NonsingularTestIntegrands::nint] = {0};
     if (i == 0) {
-      if ( ! calc_integral(p, f, integrals)) ++ne;
+      if ( ! calc_integral(w, p, f, integrals)) ++ne;
     } else {
       Pt pt{5,5};
       Options o;
       o.np_radial = o.np_angular = 12;
-      if ( ! calc_integral_tensor_quadrature(o, p, f, pt, true, integrals))
+      if ( ! calc_integral_tensor_quadrature(w, o, p, f, pt, true, integrals))
         ++ne;
     }
     if (std::abs(integrals[0] - value) > 1e2*mv2::eps) {
@@ -695,6 +721,7 @@ int test_integral () {
 
 int analyze_area () {
   int ne = 0;
+  Workspace w;
   struct AnalyzeP : hfp::CallerP {
     Real eval (const Real x) const override { return 2*M_PI*cube(x); }
     void eval_p_c (const Real c, Real& pc, Real& pdc) const override
@@ -705,7 +732,7 @@ int analyze_area () {
   for (int i = 0; i < n; ++i) mv2::axpy(1, cc, &xys[2*i]);
   const Polygon p(xys, n);
   Real area = 0;
-  calc_hfp(Options(), p, cc, One(), &area);
+  calc_hfp(w, Options(), p, cc, One(), &area);
   if (std::abs(area -4) > 1e4*mv2::eps) ++ne;
   area = hfp::calc_hfp(hfp::Options(), AnalyzeP(), 0, 1, 0);
   if (std::abs(area - M_PI) > 5e1*mv2::eps) ++ne;

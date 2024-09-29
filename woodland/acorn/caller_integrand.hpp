@@ -10,7 +10,6 @@ namespace acorn {
 
 // Caller's integrand over a domain in Real^2.
 struct CallerIntegrands {
-  static const int max_n_integrand = 6;
   // Number of integrands. Must be <= max_n_integrand.
   virtual int nintegrands() const = 0;
   // Evaluate each integrand[j], j = 0 to nintegrands()-1, at the points

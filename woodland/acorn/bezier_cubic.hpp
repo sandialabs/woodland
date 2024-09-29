@@ -32,7 +32,14 @@ private:
   using v2 = Matvec2d<Real>;
 
 public:
-  // Initialize the coefficients cs(1:8) from p1,n1,p2,n2s(1:2) and optional d.
+  // Initialize the coefficients cs(1:8) from end points p1,2 and end-point
+  // tangents m1,m2. d is the length of the interval from p1 to p2 in the
+  // coordinate used to compute the tangents.
+  static void init_from_tan(CRPtr p1, CRPtr m1, CRPtr p2, CRPtr m2,
+                            const Real d, RPtr c);
+  static void init_from_tan(const int n, CRPtr ps, CRPtr ms, CRPtr ds, RPtr cs);
+  
+  // Initialize the coefficients cs(1:8) from p1,n1,p2,n2(1:2) and optional d.
   //   p1,2 are the curve end points. The curve unit normals at p1,2 are n1,2.
   //   d = norm(p2 - p1, 2).
   //   The coefficients are chosen so that the arc covers <(=, an edge case)

@@ -2,6 +2,7 @@
 #define INCLUDE_WOODLAND_ACORN_FS3D_SIGMA
 
 #include "woodland/acorn/acorn.hpp"
+#include "woodland/acorn/workspace.hpp"
 
 namespace woodland {
 namespace acorn {
@@ -29,6 +30,7 @@ struct RectInfo {
 };
 
 void calc_sigma_const_disloc_rect(
+  Workspace& w,
   // Lame coefficients.
   const Real lam, const Real mu,
   // Source rectangle center.

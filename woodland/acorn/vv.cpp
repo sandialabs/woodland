@@ -407,6 +407,7 @@ void eval_sigma_at_ctrs (
 {
   assert(SigmaType::is_valid(stype));
   const auto ncell = rt.ncell();
+  Workspace w;
   ompparfor for (int ir = 0; ir < ncell; ++ir) {
     auto* const sigma = &sigmas[6*ir];
     for (int i = 0; i < 6; ++i) sigma[i] = 0;
@@ -435,7 +436,7 @@ void eval_sigma_at_ctrs (
 #endif
       case SigmaType::fs: {
         fs3d::calc_sigma_const_disloc_rect(
-          lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
+          w, lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
           qp.np_radial, qp.np_angular, qp.triquad_order);
       } break;
       case SigmaType::fs_exact_geometry_disloc: {
@@ -443,7 +444,7 @@ void eval_sigma_at_ctrs (
         gc.get_uv(rcv, cc_uv);
         SigmaExactOptions o;
         o.qp = qp;
-        eval_sigma_exact(gc, rt, lam, mu, dislocf, is, 1, cc_uv, s, o);
+        eval_sigma_exact(w, gc, rt, lam, mu, dislocf, is, 1, cc_uv, s, o);
       } break;
       case SigmaType::invalid:
       default: assert(0);
@@ -480,6 +481,7 @@ void eval_sigma (
   
   const Real xy_side_lens[] = {rt.get_vlength(is), rt.get_ulength(is)};
 
+  Workspace w;
   for (int iu = 0, kr = 0; iu < nurcv; ++iu) {
     const Real a = Real(iu + 1)/(nurcv + 1);
     for (int iv = 0; iv < nvrcv; ++iv, ++kr) {
@@ -499,7 +501,7 @@ void eval_sigma (
 #endif
       case SigmaType::fs:
         fs3d::calc_sigma_const_disloc_rect(
-          lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
+          w, lam, mu, src, nml, tan, xy_side_lens, disloc, rcv, s,
           qp.np_radial, qp.np_angular, qp.triquad_order);
         break;
       case SigmaType::invalid:
@@ -643,25 +645,26 @@ private:
   }
 };
 
-static void eval_sigma_exact (const SigmaExactIntegrands& s, RPtr sigma_out,
-                              const SigmaExactOptions o) {
+static void
+eval_sigma_exact (Workspace& w, const SigmaExactIntegrands& s, RPtr sigma_out,
+                  const SigmaExactOptions o) {
   Real sigma[6] = {0};
   const plane::Polygon p = s.get_src_polygon();
   if (s.dist < o.hfp_dist_fac*s.L) {
     integrals::Options io;
     io.np_radial = o.qp.np_radial;
     io.np_angular = o.qp.np_angular;
-    integrals::calc_hfp(io, p, s.rcv_uv, s, sigma);
+    integrals::calc_hfp(w, io, p, s.rcv_uv, s, sigma);
   } else {
     const auto triquad_order = o.qp.triquad_order <= 0 ?
       get_triquad_order(s.L, s.dist) : o.qp.triquad_order;
-    integrals::calc_integral(p, s, sigma, triquad_order);
+    integrals::calc_integral(w, p, s, sigma, triquad_order);
   }
   for (int i = 0; i < 6; ++i) sigma_out[i] = sigma[i];
 }
 
 void eval_sigma_exact (
-  const GeneralizedCylinder& gc, const RectTessellation& rt,
+  Workspace& w, const GeneralizedCylinder& gc, const RectTessellation& rt,
   const Real lam, const Real mu, const CallerUvFn& fdisloc,
   const int isrc, const int nuv, CRPtr uvs, RPtr sigmas,
   const SigmaExactOptions o, const bool thread)
@@ -672,12 +675,12 @@ void eval_sigma_exact (
   if (thread) {
     ompparfor for (int ir = 0; ir < nuv; ++ir) {
       SigmaExactIntegrands sei(gc, rt, lam, mu, fdisloc, isrc, &uvs[2*ir], o);
-      eval_sigma_exact(sei, &sigmas[6*ir], o);
+      eval_sigma_exact(w, sei, &sigmas[6*ir], o);
     }
   } else {
     for (int ir = 0; ir < nuv; ++ir) {
       SigmaExactIntegrands sei(gc, rt, lam, mu, fdisloc, isrc, &uvs[2*ir], o);
-      eval_sigma_exact(sei, &sigmas[6*ir], o);
+      eval_sigma_exact(w, sei, &sigmas[6*ir], o);
     }
   }
 }
@@ -688,6 +691,7 @@ void eval_sigma_exact_at_ctrs (
   const Real lam, const Real mu, const CallerUvFn& fdisloc,
   RPtr sigmas, const SigmaExactOptions o)
 {
+  Workspace w;
   const auto ncell_rcv = rt_rcv.ncell();
   const auto ncell_src = rt_src.ncell();
   ompparfor for (int ir = 0; ir < ncell_rcv; ++ir) {
@@ -698,7 +702,7 @@ void eval_sigma_exact_at_ctrs (
     for (int i = 0; i < 6; ++i) sigma[i] = 0;
     for (int is = 0; is < ncell_src; ++is) {
       Real s[6];
-      eval_sigma_exact(gc, rt_src, lam, mu, fdisloc, is, 1, cc_rcv_uv, s, o);
+      eval_sigma_exact(w, gc, rt_src, lam, mu, fdisloc, is, 1, cc_rcv_uv, s, o);
       for (int i = 0; i < 6; ++i) sigma[i] += s[i];
     }
   }

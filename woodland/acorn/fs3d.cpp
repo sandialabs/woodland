@@ -81,12 +81,11 @@ static void rcv_distance (const Real xy_side_lens[2], const Integrands& f,
 }
 
 void calc_sigma_const_disloc_rect (
-  const Real lam, const Real mu, const Real src[3], const Real nml[3],
-  const Real tangent[3], const Real xy_side_lens[2], const Real disloc[3],
-  const Real rcv[3], Real sigma[6],
-  const int np_radial, const int np_angular,
-  int triquad_order, const Real triquad_tol,
-  RectInfo* info)
+  Workspace& w, const Real lam, const Real mu, const Real src[3],
+  const Real nml[3], const Real tangent[3], const Real xy_side_lens[2],
+  const Real disloc[3], const Real rcv[3], Real sigma[6],
+  const int np_radial, const int np_angular, int triquad_order,
+  const Real triquad_tol, RectInfo* info)
 {
   using namespace acorn;
   integrals::Options io;
@@ -102,11 +101,11 @@ void calc_sigma_const_disloc_rect (
   const Real L = std::max(hx, hy);
   const bool hfp = dist[1] < 1e-4*L && dist[0] < L;
   if (hfp)
-    integrals::calc_hfp(io, p, f.get_singular_point(), f, sigma);
+    integrals::calc_hfp(w, io, p, f.get_singular_point(), f, sigma);
   else {
     if (triquad_order <= 0)
       triquad_order = get_triquad_order(L, dist[0], triquad_tol);
-    integrals::calc_integral(p, f, sigma, triquad_order);
+    integrals::calc_integral(w, p, f, sigma, triquad_order);
   }
   if (info) {
     info->hfp = hfp;
@@ -178,6 +177,7 @@ bool time_calc_sigma_point (const int n, const bool verbose) {
 // tests the routine more extensively.
 int unittest () {
   int ne = 0;
+  Workspace w;
   {
 #ifndef WOODLAND_ACORN_HAVE_DC3D
     printf("fs3d::unittest: Because extern/dc3d.f is not available, "
@@ -214,13 +214,14 @@ int unittest () {
       tangent[] = {1,0,0}, xy_side_lens[] = {1,1}, disloc[] = {1,1,1},
       rcv[] = {0,0,0};
     Real sigma[6];
-    calc_sigma_const_disloc_rect(lam, mu, src, nml, tangent, xy_side_lens,
+    calc_sigma_const_disloc_rect(w, lam, mu, src, nml, tangent, xy_side_lens,
                                  disloc, rcv, sigma);
   }
   return ne;
 }
 
 static void study_triquad_table () {
+  Workspace w;
   const int triquad_orders[] = {1, 2, 4, 6, 8, 12};
   const int nto = sizeof(triquad_orders)/sizeof(*triquad_orders);
   const Real tols[] = {1e-6, 1e-8, 1e-10, 1e-12, 1e-14};
@@ -230,7 +231,7 @@ static void study_triquad_table () {
   const Real src[3] = {0}, nml[] = {0,0,1}, tan[] = {1,0,0}, xy_side_lens[] = {1,1};
   const auto calc_sigma =
     [&] (CRPtr rcv, CRPtr disloc, const int triquad_order, RPtr sigma) {
-      calc_sigma_const_disloc_rect(lam, mu, src, nml, tan, xy_side_lens,
+      calc_sigma_const_disloc_rect(w, lam, mu, src, nml, tan, xy_side_lens,
                                    disloc, rcv, sigma, -1, -1, triquad_order);
     };
 
@@ -389,7 +390,8 @@ void make_figure_data () {
   o.np_radial = 20;
   FigureIntegrands f;
   Real hfps[6];
-  calc_hfp(o, f.get_polygon(), f.get_rcv(), f, hfps);
+  Workspace w;
+  calc_hfp(w, o, f.get_polygon(), f.get_rcv(), f, hfps);
   integrals::fig_fin();
 #else
   printf("define WOODLAND_ACORN_FIGURE to enable\n");

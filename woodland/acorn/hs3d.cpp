@@ -107,7 +107,7 @@ struct HalfspaceTermsIntegrands : public CallerIntegrands {
 };
 
 void calc_sigma_const_disloc_rect(
-  const Real lam, const Real mu, const Real src[3], const Real nml[3],
+  Workspace& w, const Real lam, const Real mu, const Real src[3], const Real nml[3],
   const Real tangent[3], const Real xy_side_lens[2], const Real disloc[3],
   const Real rcv[3], Real sigma[6], const bool halfspace, const bool use_okada,
   const int hfp_np_radial, const int hfp_np_angular, int triquad_order,
@@ -139,7 +139,7 @@ void calc_sigma_const_disloc_rect(
   } else {
     acorn::fs3d::RectInfo info;
     acorn::fs3d::calc_sigma_const_disloc_rect(
-      lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv, sigma,
+      w, lam, mu, src, nml, tangent, xy_side_lens, disloc, rcv, sigma,
       hfp_np_radial, hfp_np_angular, triquad_order, triquad_tol, &info);
     if (halfspace) {
       Real sigma_hs[6] = {0};
@@ -148,7 +148,7 @@ void calc_sigma_const_disloc_rect(
       const Real xys[] = {-wh, -hh, wh, -hh, wh, hh, -wh, hh};
       plane::Polygon rect(xys, 4);
       triquad_order = info.triquad_order;
-      integrals::calc_integral(rect, hti, sigma_hs, triquad_order);
+      integrals::calc_integral(w, rect, hti, sigma_hs, triquad_order);
       for (int i = 0; i < 6; ++i) sigma[i] += sigma_hs[i];
     }
   }
@@ -220,6 +220,7 @@ static int testrect (
   Real s1, Real s2, Real s3, Real n1, Real n2, Real n3, Real w, Real h,
   Real d1, Real d2, Real d3, Real r1, Real r2, Real r3, Real tolmult = 1e4)
 {
+  Workspace ws;
   const Real lam = 0.95, mu = 1.1;
   const Real src[] = {s1,s2,s3}, rcv[] = {r1,r2,r3}, disloc[] = {d1,d2,d3},
     xy_side_lens[] = {w,h};
@@ -242,12 +243,12 @@ static int testrect (
   bool all_ok = true;
   for (const bool fullspace : {true, false}) {
     Real sigma_o[6], sigma_me[6];
-    calc_sigma_const_disloc_rect(lam, mu, src, nml, tangent, xy_side_lens,
+    calc_sigma_const_disloc_rect(ws, lam, mu, src, nml, tangent, xy_side_lens,
                                  disloc, rcv, sigma_o , not fullspace, true);
-    calc_sigma_const_disloc_rect(lam, mu, src, nml, tangent, xy_side_lens,
+    calc_sigma_const_disloc_rect(ws, lam, mu, src, nml, tangent, xy_side_lens,
                                  disloc, rcv, sigma_me, not fullspace, false);
     const bool ok = cmp(fullspace, src, rcv, disloc, nml,
-                          sigma_o, sigma_me, tolmult*mv2::eps);
+                        sigma_o, sigma_me, tolmult*mv2::eps);
     if (not ok) all_ok = false;
   }
   

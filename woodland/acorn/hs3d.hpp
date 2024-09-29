@@ -2,6 +2,7 @@
 #define INCLUDE_WOODLAND_ACORN_HS3D_SIGMA
 
 #include "woodland/acorn/acorn.hpp"
+#include "woodland/acorn/workspace.hpp"
 
 namespace woodland {
 namespace acorn {
@@ -24,6 +25,7 @@ void calc_sigma_point_halfspace_terms(
   RealT sigma[6]);
 
 void calc_sigma_const_disloc_rect(
+  Workspace& w,
   // Lame coefficients.
   const Real lam, const Real mu,
   // Source rectangle center.

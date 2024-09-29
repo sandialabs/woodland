@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "woodland/acorn/acorn.hpp"
+#include "woodland/acorn/workspace.hpp"
 
 namespace woodland {
 namespace acorn {
@@ -200,7 +201,8 @@ struct SigmaExactOptions {
 
 // Evaluate sigma based on exact dislocation field and geometric surface over
 // the source rectangle.
-void eval_sigma_exact(const GeneralizedCylinder& gc, const RectTessellation& rt,
+void eval_sigma_exact(Workspace& w,
+                      const GeneralizedCylinder& gc, const RectTessellation& rt,
                       const Real lam, const Real mu, const CallerUvFn& fdisloc,
                       // src cell
                       const int isrc,

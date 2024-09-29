@@ -20,7 +20,8 @@ set(WOODLAND_ACORN_SRCS
   unittest.cpp
   util.cpp
   vv.cpp
-  vv_flat_strip.cpp)
+  vv_flat_strip.cpp
+  workspace.cpp)
 
 set(WOODLAND_ACORN_HEADERS
   acorn.hpp
@@ -47,7 +48,8 @@ set(WOODLAND_ACORN_HEADERS
   unittest.hpp
   util.hpp
   vectorization.hpp
-  vv.hpp)
+  vv.hpp
+  workspace.hpp)
 
 # Not currently supported:
 #   option(WOODLAND_ACORN_VECTORIZE "Enable vectorization." OFF)

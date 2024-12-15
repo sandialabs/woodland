@@ -21,7 +21,7 @@ the convergence curves to be extended to high accuracy.
 
 ### Examples
 
-Woodland::Acorn method; slip in the $x$ direction; full-space solution; use the exact surface when computing integrals; run three resolutions:
+Woodland::Acorn method; slip in the $x$ direction; full-space solution; use the exact surface when computing integrals; use the default quadratic reconstruction of slip; run three resolutions:
 ```
 $ OMP_NUM_THREADS=4 ./bin/woodland_examples_convzx ct_we_zx 'testcase=20, halfspace=0, srfrecon=0, nres=3'
 
@@ -93,6 +93,33 @@ l2: 1.10e-01 (0.90) 2.27e-02 (1.18) 1.17e-02 (0.86) 5.78e-02 (0.79) 2.50e-02 (1.
 li: 1.51e-01 (0.85) 3.37e-02 (1.17) 1.72e-02 (0.73) 8.00e-02 (0.72) 2.89e-02 (1.11) 6.22e-02 (0.96)
 ```
 
+Flat triangles with constant dislocation are generally nonconvergent, as
+demonstrated by the next example. Slip in the $x$ direction; full-space
+solution; flat elements; four triangles per rectangle; constant dislocation over
+an element; run three resolutions:
+```
+$ OMP_NUM_THREADS=4 ./bin/woodland_examples_convzx ct_we_zx 'testcase=20, halfspace=0, ntriperrect=4, flatelem=1, dislocorder=0, nres=3'
+
+#threads 4
+convtest_w_vs_e 20
+ct> lam 9.000e-01 mu 1.100e+00 halfspace 0
+ct> ntriperrect 4 dislocorder 0 exactsrf 0 flatelem 1 exacttan 0 tanorder 4 c2spline 0
+ct> zshape trig1
+ct> disloc 0 stapered  1.000  0.500  0.500  1.000  0.000 -0.000  1.000  0.800  0.800
+nx ny 10 8
+t: method 7.51e-02 (7.51e-02) exact 8.69e-01 (8.69e-01)
+l2: 5.08e-01 (0.00) 4.72e-01 (0.00) 8.99e-02 (0.00) 4.42e-01 (0.00) 1.25e+00 (0.00) 3.77e-01 (0.00)
+li: 7.84e-01 (0.00) 1.07e+00 (0.00) 1.11e-01 (0.00) 6.46e-01 (0.00) 2.62e+00 (0.00) 5.47e-01 (0.00)
+nx ny 20 16
+t: method 2.97e-01 (3.72e-01) exact 3.49e+00 (4.36e+00)
+l2: 4.27e-01 (0.25) 3.44e-01 (0.46) 6.88e-02 (0.39) 3.22e-01 (0.46) 1.34e+00 (-0.09) 3.37e-01 (0.16)
+li: 8.04e-01 (-0.04) 8.41e-01 (0.35) 1.04e-01 (0.10) 5.99e-01 (0.11) 3.29e+00 (-0.33) 5.95e-01 (-0.12)
+nx ny 40 32
+t: method 1.78e+00 (2.15e+00) exact 1.44e+01 (1.87e+01)
+l2: 3.85e-01 (0.15) 2.68e-01 (0.36) 6.22e-02 (0.15) 2.58e-01 (0.32) 1.39e+00 (-0.06) 3.33e-01 (0.02)
+li: 7.85e-01 (0.04) 6.66e-01 (0.34) 9.00e-02 (0.21) 5.23e-01 (0.20) 3.36e+00 (-0.03) 6.24e-01 (-0.07)
+```
+
 Options:
 ```
 option: type [default]
@@ -103,7 +130,8 @@ srfrecon: bool (0,1) [1]
 flatelem: bool [0]
 exacttan: bool [0]
 tanorder: 2, 4 [4]
-c2spline: bool [0]  dislocorder: 0, 1, 2, 3 [2]
+c2spline: bool [0]
+dislocorder: 0, 1, 2, 3 [2]
 nres: int > 0 [-1]
 woodlandrect: bool [0]
 halfspace: bool [0]

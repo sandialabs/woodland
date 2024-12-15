@@ -1,8 +1,10 @@
+## Woodland::Acorn
+
 Woodland::Acorn is a library containing methods to integrate the elastostatic
 Displacement Discontinuity Method Green's function over convex polygonal
 elements on a curved fault.
 
-## Interface
+### Interface
 
 Acorn provides routines to compute the self-interaction (`calc_hfp` in
 `interaction_integrals.hpp`) and other-interaction (`calc_integral` in
@@ -22,7 +24,7 @@ the given reference coordinate.
 `vv.hpp` is a set of verification and validation problems and shows how to use
 these routines and construct a problem-specific `CallerIntegrands` structure.
 
-## Methods
+### Methods
 
 `calc_integral` computes a proper integral using triangular quadrature.
 

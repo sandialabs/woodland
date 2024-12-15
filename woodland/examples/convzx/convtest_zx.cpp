@@ -557,7 +557,7 @@ static void print_valid_pairs () {
          "  flatelem: bool [0]\n"
          "  exacttan: bool [0]\n"
          "  tanorder: 2, 4 [4]\n"
-         "  c2spline: bool [0]"
+         "  c2spline: bool [0]\n"
          "  dislocorder: 0, 1, 2, 3 [2]\n"
          "  nres: int > 0 [-1]\n"
          "  woodlandrect: bool [0]\n"

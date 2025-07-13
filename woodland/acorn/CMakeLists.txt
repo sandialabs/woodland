@@ -1,5 +1,4 @@
 set(WOODLAND_ACORN_SRCS
-  bezier_cubic.cpp
   compose_quadrature.cpp
   compose_triquad.cpp
   elastostatics.cpp
@@ -15,7 +14,6 @@ set(WOODLAND_ACORN_SRCS
   linalg.cpp
   matvec.cpp
   plane_geometry.cpp
-  solver1d.cpp
   triangle.cpp
   unittest.cpp
   util.cpp
@@ -25,7 +23,6 @@ set(WOODLAND_ACORN_SRCS
 
 set(WOODLAND_ACORN_HEADERS
   acorn.hpp
-  bezier_cubic.hpp
   caller_integrand.hpp
   compose_lagrange_polynomial.hpp
   compose_quadrature.hpp
@@ -42,7 +39,6 @@ set(WOODLAND_ACORN_HEADERS
   matvec.hpp
   openmp.hpp
   plane_geometry.hpp
-  solver1d.hpp
   triangle.hpp
   types.hpp
   unittest.hpp
@@ -83,7 +79,7 @@ if (OpenMP_Fortran_FOUND)
   target_link_libraries(woodland_acorn OpenMP::OpenMP_Fortran)
 endif()
 target_include_directories(woodland_acorn PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>        # for acorn_config.h
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/../..>  # for acorn_config.h
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../..>  # for headers at build time
   $<INSTALL_INTERFACE:include>)                         # for headers from install
 

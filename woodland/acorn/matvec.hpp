@@ -132,6 +132,7 @@ struct Matvec {
 };
 
 template <typename Real> using Matvec2d = Matvec<2,Real>;
+template <typename Real> using Matvec3d = Matvec<3,Real>;
 
 } // namespace acorn
 } // namespace woodland

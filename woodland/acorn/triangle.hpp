@@ -14,11 +14,6 @@ namespace acorn {
 
    The barycentric coordinate is usually called 'lam', for 'lambda'. The
    barycentric matrix that transforms from (x,y) to lam is 'b'.
-
-   The Clough-Tocher code is adapted from my package dc3dm. calc_coefs follows
-   section 2 of ref [1].
-
-   [1] P. Alfeld, A trivariate Clough-Tocher scheme, 1984.
  */
 
 struct Triangle2D {

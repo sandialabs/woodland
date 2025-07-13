@@ -1,7 +1,5 @@
 #include <cstdio>
 
-#include "woodland/acorn/solver1d.hpp"
-#include "woodland/acorn/bezier_cubic.hpp"
 #include "woodland/acorn/compose_triquad.hpp"
 #include "woodland/acorn/util.hpp"
 #include "woodland/acorn/linalg.hpp"
@@ -143,8 +141,6 @@ int test_fullspace_rect_against_okada () {
 
 int unittest () {
   int nerr = 0, ne;
-  rununittest(Solver1d<Real>::unittest);
-  rununittest(BezierCubic<Real>::unittest);
   rununittest(util_test);
   rununittest(fs3d::unittest);
   rununittest(hs3d::unittest);

@@ -1,8 +1,10 @@
-## Woodland::Acorn
+## Acorn
 
-Woodland::Acorn is a library containing methods to integrate the elastostatic
+`woodland::acorn` is a library containing methods to integrate the elastostatic
 Displacement Discontinuity Method Green's function over convex polygonal
 elements on a curved fault.
+
+It is largely complete.
 
 ### Interface
 

@@ -44,25 +44,45 @@ struct Integrands : public acorn::CallerIntegrands {
     calc_singular_point(xhat, yhat, src, rcv, cc);
   }
 
-  const Real* get_singular_point () const { return cc; }
+  bool singular_pt (Real p[2]) const override {
+    mv2::copy(cc, p);
+    return true;
+  }
 
   int nintegrands () const override { return 6; }
 
-  Real permitted_R_min (const Real R_max) const override {
-    return 1e-3*R_max;
+  void eval (const int n, CRPtr p, RPtr integrand) const override {
+    return eval(n, p, nullptr, false, integrand);
   }
 
-  void eval (const int n, CRPtr p, RPtr integrand) const override {
-    for (int i = 0; i < n; ++i) {
-      Real pt_src[3];
-      mv3::sum3(1, src, p[2*i], xhat, p[2*i+1], yhat, pt_src);
-      calc_sigma_point(lam, mu, pt_src, zhat, disloc, rcv, &integrand[6*i]);
-    }
+  //Real permitted_r_min (const Real r_max) const override { return 1e-3*r_max; }
+
+  bool supports_mult_by_R3 () const override { return true; }
+
+  void eval_mult_by_R3 (const int n, CRPtr p, CRPtr J_times_pdir,
+                        RPtr integrand) const override {
+    eval(n, p, J_times_pdir, true, integrand);
+  }
+
+  void eval_shape_J(const Real p[2], Real J[6]) const override {
+    for (int d = 0; d < 3; ++d) J[2*d  ] = xhat[d];
+    for (int d = 0; d < 3; ++d) J[2*d+1] = yhat[d];
   }
 
   const Real lam, mu;
   CRPtr src, zhat, xhat, disloc, rcv;
   Real yhat[3], cc[2];
+
+private:
+  void eval (const int n, CRPtr p, CRPtr J_times_pdir, const bool mult_by_R3,
+             RPtr integrand) const {
+    for (int i = 0; i < n; ++i) {
+      Real pt_src[3];
+      mv3::sum3(1, src, p[2*i], xhat, p[2*i+1], yhat, pt_src);
+      calc_sigma_point(lam, mu, pt_src, zhat, disloc, rcv, &integrand[6*i],
+                       mult_by_R3, mult_by_R3 ? &J_times_pdir[3*i] : nullptr);
+    }
+  }
 };
 
 static void rcv_distance (const Real xy_side_lens[2], const Integrands& f,
@@ -101,7 +121,7 @@ void calc_sigma_const_disloc_rect (
   const Real L = std::max(hx, hy);
   const bool hfp = dist[1] < 1e-4*L && dist[0] < L;
   if (hfp)
-    integrals::calc_hfp(w, io, p, f.get_singular_point(), f, sigma);
+    integrals::calc_hfp(w, io, p, f, sigma);
   else {
     if (triquad_order <= 0)
       triquad_order = get_triquad_order(L, dist[0], triquad_tol);
@@ -316,11 +336,14 @@ struct FigureIntegrands : public acorn::CallerIntegrands {
 
   int nintegrands () const override { return nsigma; }
 
-  Real permitted_R_min (const Real R_max) const override {
-    return 1e-3*R_max;
+  Real permitted_r_min (const Real r_max) const override {
+    return 1e-3*r_max;
   }
 
-  CRPtr get_rcv () { return rcv; }
+  bool singular_pt (Real p[2]) {
+    mv2::copy(rcv, p);
+    return true;
+  }
 
   plane::Polygon get_polygon () const {
     return plane::Polygon(vtxs, sizeof(vtxs)/sizeof(*vtxs)/2);
@@ -391,7 +414,7 @@ void make_figure_data () {
   FigureIntegrands f;
   Real hfps[6];
   Workspace w;
-  calc_hfp(w, o, f.get_polygon(), f.get_rcv(), f, hfps);
+  calc_hfp(w, o, f.get_polygon(), f, hfps);
   integrals::fig_fin();
 #else
   printf("define WOODLAND_ACORN_FIGURE to enable\n");

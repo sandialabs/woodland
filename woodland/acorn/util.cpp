@@ -11,6 +11,17 @@
 namespace woodland {
 namespace acorn {
 
+bool print_throw_if_msg_to_stderr = true;
+
+SilenceThrowPrint::SilenceThrowPrint () {
+  print_throw_if_msg_to_stderr = false;
+}
+
+SilenceThrowPrint::~SilenceThrowPrint () {
+  print_throw_if_msg_to_stderr = true;
+}
+
+typedef Matvec<2,Real> mv2;
 typedef Matvec<3,Real> mv3;
 
 double urand () { return rand() / double(RAND_MAX); }
@@ -68,19 +79,6 @@ static int test_rotate () {
     if (std::abs(mv3::dot(zhat, v) - 1) > 2*mv3::eps) ++ne;
   }
   return ne;
-}
-
-void xyb_to_FlatSegments (const int ne, const Real* const xb, const Real* const yb,
-                          std::vector<FlatSegment>& els) {
-  els.resize(ne);
-  /*ompparfor*/ for (int i = 0; i < ne; ++i) {
-    auto& e = els[i];
-    e.xc = (xb[i] + xb[i+1])/2;
-    e.dx = (xb[i+1] - xb[i])/2;
-    e.yc = (yb[i] + yb[i+1])/2;
-    e.dy = (yb[i+1] - yb[i])/2;
-    e.reset_hl();
-  }
 }
 
 void calc_parabola_coefs (const Real dx[2], const Real y[3], Real c[3]) {
@@ -401,11 +399,60 @@ static int test_split () {
   return ne;
 }
 
-Sprinter::Sprinter (const int nbuf_)
-  : n(0), nbuf(nbuf_ > 0 ? nbuf_ : 128), buf(nbuf)
-{}
+File::Ptr File::create (FILE* fid) { return std::make_shared<File>(fid); }
 
-void Sprinter::add (const char* format, ...) {
+File::Ptr File::create (const std::string& filename, const std::string& mode,
+                        const bool quiet) {
+  const auto fid = fopen(filename.c_str(), mode.c_str());
+  if (not fid) {
+    if (not quiet)
+      printf("File::create: Failed to fopen %s, mode %s\n",
+             filename.c_str(), mode.c_str());
+    return nullptr;
+  }
+  return create(fid);
+}
+
+bool file_exists (const std::string& filename) {
+  const auto fid = fopen(filename.c_str(), "r");
+  if (fid) fclose(fid);
+  return fid != nullptr;
+}
+
+Sprinter::Sprinter (const int nbuf)
+  : fid(nullptr)
+{ reset(nbuf); }
+
+void Sprinter::reset (const int nbuf_) {
+  if (fid) flush(); // possible only if state is valid
+  str_api = true;
+  fid = nullptr;
+  nbuf = nbuf_ > 0 ? nbuf_ : 128;
+  buf.resize(nbuf);
+  clear_();
+}
+
+Sprinter::Sprinter (const File::Ptr& stream, const int bufsz)
+  : fid(nullptr)
+{ reset(stream, bufsz); }
+
+void Sprinter::reset (const File::Ptr& stream, const int bufsz_) {
+  if (fid) flush(); // possible only if state is valid
+  str_api = false;
+  nbuf = bufsz_ > 0 ? bufsz_ : 128;
+  fid = stream;
+  bufsz = bufsz_;
+  buf.resize(nbuf);
+  clear_();
+}
+
+void Sprinter::clear_ () {
+  assert(nbuf > 0);
+  n = 0;
+  buf[0] = '\0';
+}
+
+void Sprinter::wr (const char* format, ...) {
   for (;;) {
     va_list args;
     va_start(args, format);
@@ -419,26 +466,144 @@ void Sprinter::add (const char* format, ...) {
     buf.resize(nbuf);
   }
   assert(n < nbuf);
+  if (not str_api and n > bufsz) flush();
 }
 
 void Sprinter::out (FILE* stream, const bool newline) const {
+  assert(str_api);
   const char* format = newline ? "%s\n" : "%s";
   fprintf(stream, format, buf.data());
 }
 
-std::string Sprinter::str () const { return std::string(buf.data()); }
+std::string Sprinter::str () const {
+  assert(str_api);
+  return std::string(buf.data());
+}
+
+void Sprinter::clear () {
+  assert(str_api);
+  clear_();
+}
+
+void Sprinter::flush () {
+  assert(not str_api);
+  assert(fid->id());
+  fprintf(fid->id(), "%s", buf.data());
+  clear_();
+}
+
+Sprinter::~Sprinter () {
+  if (not str_api) flush();
+}
 
 static int test_Sprinter () {
   int ne = 0;
-  std::vector<std::string> strs;
-  for (const int nbuf : {4096, 3}) {
-    Sprinter s(nbuf);
-    for (int i = 0; i < 10; ++i)
-      s.add("float %1.15f exp %1.15e string %s\n",
-            M_PI, M_PI, "3.141592653589793");
-    strs.push_back(s.str());
+  std::string str0;
+  for (const bool str_api : {true, false}) {
+    for (const int nbuf : {3, 4096}) {
+      File::Ptr tmpfid;
+      Sprinter s(nbuf);
+      if (not str_api) {
+        tmpfid = File::create(std::tmpfile());
+        s.reset(tmpfid, nbuf);
+      }
+      if (str_api) {
+        s.str(); // safe on init
+        s.wr("won't appear %d\n", 5);
+        s.clear();
+      } else {
+        s.flush(); // safe on init
+      }
+      for (int i = 0; i < 10; ++i)
+        s.wr("float %1.15f exp %1.15e string %s\n",
+             M_PI, M_PI, "3.141592653589793");
+      s.wr("done\n");
+      std::string stest;
+      if (str_api)
+        stest = s.str();
+      else {
+        s.flush();
+        s.flush(); // can flush multiple times
+        std::rewind(tmpfid->id());
+        const int nbuf = 4096;
+        std::vector<char> buf(nbuf);
+        int i = 0;
+        do buf[i++] = std::fgetc(tmpfid->id());
+        while (buf[i-1] != EOF and i < nbuf);
+        buf[i-1] = '\0';
+        stest = std::string(buf.data());
+      }
+      if (str0.empty())
+        str0 = stest;
+      else if (stest != str0)
+        ++ne;
+    }
   }
-  if (strs[1] != strs[0]) ++ne;
+  return ne;
+}
+
+void sym_2x2_eig (const Real a, const Real b, const Real c,
+                  Real lams[2], Real v1[2], Real v2[2]) {
+  const Real
+    t1 = a + b,
+    t2 = std::sqrt(square(a - b) + 4*square(c));
+  lams[0] = (t1 - t2)/2;
+  lams[1] = (t1 + t2)/2;
+  const auto csmall = (std::abs(c) <
+                       10*mv3::eps*std::max(std::abs(a), std::abs(b)));
+  auto den = a - b + t2;
+  if (csmall or std::abs(den) < mv3::eps*std::abs(c)) {
+    v1[0] = a >= b ? 0 : 1; // -1 is the limit, but we can multiply through by -1
+    v1[1] = a >= b ? 1 : 0;
+  } else {
+    v1[0] = -2*c/den;
+    v1[1] =  1;
+    mv2::normalize(v1);
+  }
+  den = b - a + t2;
+  if (csmall or std::abs(den) < mv3::eps*std::abs(c)) {
+    v2[0] = b > a ? 0 : 1;
+    v2[1] = b > a ? 1 : 0;
+  } else {
+    v2[0] =  2*c/den;
+    v2[1] =  1;
+    mv2::normalize(v2);
+  }
+}
+
+static int test_sym_2x2_eig (Real a, Real b, Real c) {
+  Real lams[2], v1[2], v2[2];
+  sym_2x2_eig(a, b, c, lams, v1, v2);
+  if (std::isnan(v1[0]) or std::isnan(v2[0])) return 1;
+  if (std::isinf(v1[0]) or std::isinf(v2[0])) return 1;
+  const Real res[] = {a*v1[0] + c*v1[1] - lams[0]*v1[0],
+                      c*v1[0] + b*v1[1] - lams[0]*v1[1],
+                      a*v2[0] + c*v2[1] - lams[1]*v2[0],
+                      c*v2[0] + b*v2[1] - lams[1]*v2[1]};
+  Real err = 0;
+  for (int i = 0; i < 4; ++i) err = std::max(err, std::abs(res[i]));
+  if (err > 1e3*mv3::eps) {
+    pr(puf(a) pu(b) pu(c));
+    prarr("lams",lams,2);
+    prarr("v1",v1,2);
+    prarr("v2",v2,2);
+    prc(err);
+    printf("\n");
+    return 1;
+  }
+  return 0;
+}
+
+static int test_sym_2x2_eig () {
+  int ne = 0;
+  ne += test_sym_2x2_eig(1.2, -0.3, 2.1);
+  ne += test_sym_2x2_eig(1.2, -0.3, 0);
+  ne += test_sym_2x2_eig(0.3, 1.2, 0);
+  ne += test_sym_2x2_eig(1.2, 0.3, 1e-16);
+  ne += test_sym_2x2_eig(1.2, 0.3, 1e-14);
+  ne += test_sym_2x2_eig(1.2, 1.2, 1e-14);
+  ne += test_sym_2x2_eig(1.2, 1.2, 0);
+  ne += test_sym_2x2_eig(-1.2, -1.2, 1e-17);
   return ne;
 }
 
@@ -452,6 +617,7 @@ int util_test () {
   rununittest(test_form_separated_vector);
   rununittest(test_form_rotation_given_x);
   rununittest(test_form_rotation_given_x_then_z);
+  rununittest(test_sym_2x2_eig);
   rununittest(test_split);
   rununittest(test_Sprinter);
   return nerr;

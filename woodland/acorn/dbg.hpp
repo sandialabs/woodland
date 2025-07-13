@@ -24,13 +24,13 @@ static inline int getrank () {
 
 #ifndef pr
 #define pr(m) do {                                    \
-    int _pid_ = acorn::dbg::getrank();                \
+    int _pid_ = woodland::acorn::dbg::getrank();      \
     std::stringstream _ss_;                           \
     _ss_ << "pid " << _pid_ << " " << m << std::endl; \
     std::cerr << _ss_.str();                          \
   } while (0)
 #define pr0(m) do {                                     \
-    int _pid_ = acorn::dbg::getrank();                  \
+    int _pid_ = woodland::acorn::dbg::getrank();        \
     MPI_Comm_rank(MPI_COMM_WORLD, &_pid_);              \
     if (_pid_ != 0) break;                              \
     std::stringstream _ss_;                             \

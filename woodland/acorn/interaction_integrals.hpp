@@ -9,15 +9,15 @@ namespace woodland {
 namespace acorn {
 namespace integrals {
 
-/* Let f be well behaved or else singular at the point cc with singularity
-   1/r^3, r = distance(x - cc). Compute the Hadamard finite part (h.f.p.) or
-   integral of the function f over a convex polygon p. cc can be inside or
+/* Let f be well behaved or else singular at the point x_s with singularity
+   1/r^3, r = distance(x - x_s). Compute the Hadamard finite part (h.f.p.) or
+   integral of the function f over a convex polygon p. x_s can be inside or
    outside of p.
 
-   If cc is outside of p, then the h.f.p. reduces to a proper integral. If cc is
-   far away from p (in the sense of distance relative to p's size), then
-   calc_integral is more accurate than calc_hfp. But if cc is near p, then
-   calc_hfp is increasingly more accurate than calc_integral as cc gets nearer
+   If x_s is outside of p, then the h.f.p. reduces to a proper integral. If x_s
+   is far away from p (in the sense of distance relative to p's size), then
+   calc_integral is more accurate than calc_hfp. But if x_s is near p, then
+   calc_hfp is increasingly more accurate than calc_integral as x_s gets nearer
    to p from the outside.
 
    WARNING: Right now, we handle only a 1/r^3 singularity. In particular, these
@@ -42,8 +42,7 @@ bool calc_hfp(
   const Options& o,
   // Convex polygon over which to integrate.
   const Polygon& p,
-  // Location of singularity.
-  const Pt cc,
+  // f.singular_pos must return true.
   const CallerIntegrands& f,
   // Values are += into input values.
   RPtr hfps);

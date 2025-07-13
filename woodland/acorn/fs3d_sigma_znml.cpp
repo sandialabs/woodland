@@ -16,7 +16,7 @@ typedef Matvec<3,Real> mv3;
 template <typename RealT>
 void calc_sigma_point_znml (
   const Real lam, const Real mu, const RealT& v1, const RealT& v3,
-  const RealT d[3], const RealT& x1, RealT sigma[6])
+  const RealT d[3], const RealT& x1, RealT sigma[6], const bool mult_by_R3)
 {
   const RealT
     d1 = d[0], d2 = d[1], d3 = d[2];
@@ -24,7 +24,7 @@ void calc_sigma_point_znml (
     lm = lam + mu,
     l2m = lam + 2*mu;
   const RealT
-    R3 = std::abs(x1*x1*x1),
+    R3 = mult_by_R3 ? 1 : std::abs(x1*x1*x1),
     fac1 = 1.0/(M_PI*l2m*mu*R3),
     fac2 = 1.0/(M_PI*l2m*R3);
   const auto T_x_0  = -1.0/2.0*(2*l2m*mu + lam*(l2m - lm))*fac1;
@@ -62,21 +62,23 @@ void calc_sigma_point_znml (
 template <typename RealT>
 void calc_sigma_point (const Real lam, const Real mu, const RealT y[3],
                        const RealT v[3], const RealT d[3], const RealT x[3],
-                       RealT sigma[6]) {
+                       RealT sigma[6], const bool mult_by_R3,
+                       const RealT* dir) {
   Real z[3], R[9], dlcl[3];
   mv3::subtract(x, y, z);
-  form_rotation_given_x_then_z(z, v, R);
+  form_rotation_given_x_then_z(dir ? dir : z, v, R);
   const auto x1 = mv3::dot(R, z);
   const auto v1 = mv3::dot(R, v);
   const auto v3 = mv3::dot(R+6, v);
   mv3::matvec(R, d, dlcl);
-  calc_sigma_point_znml(lam, mu, v1, v3, dlcl, x1, sigma);
+  calc_sigma_point_znml(lam, mu, v1, v3, dlcl, x1, sigma, mult_by_R3);
   rotate_sym_tensor_3x3_RtAR(R, sigma);
 }
 
 template void
 calc_sigma_point<Real>(const Real lam, const Real mu, const Real y[3], const Real v[3],
-                       const Real d[3], const Real x[3], Real sigma[6]);
+                       const Real d[3], const Real x[3], Real sigma[6],
+                       const bool mult_by_R3, const Real* dir);
 
 #ifdef WOODLAND_ACORN_VECTORIZE
 # message "ERROR: WOODLAND_ACORN_VECTORIZE is not supported yet."

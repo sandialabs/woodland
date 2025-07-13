@@ -4,12 +4,24 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "woodland/acorn/dbg.hpp"
+
+// The following macros print to stderr as well as throw std::logic_error. To
+// prevent the print to stderr, set acorn::print_throw_if_msg_to_stderr = false.
+
+namespace woodland {
+namespace acorn {
+extern bool print_throw_if_msg_to_stderr;
+}
+}
+
 #define throw_if_nomsg(condition) do {                                  \
     if (condition) {                                                    \
       std::stringstream _ss_;                                           \
       _ss_ << __FILE__ << ":" << __LINE__ << ": The condition:\n"       \
            << #condition "\n is an error";                              \
-      fprintf(stderr, "%s\n", _ss_.str().c_str());                      \
+      if (woodland::acorn::print_throw_if_msg_to_stderr)                \
+        fprintf(stderr, "%s\n", _ss_.str().c_str());                    \
       throw std::logic_error(_ss_.str());                               \
     }                                                                   \
   } while (0)
@@ -19,7 +31,8 @@
       std::stringstream _ss_;                                           \
       _ss_ << __FILE__ << ":" << __LINE__ << ": The condition:\n"       \
            << #condition "\nled to the exception\n" << message << "\n"; \
-      fprintf(stderr, "%s\n", _ss_.str().c_str());                      \
+      if (woodland::acorn::print_throw_if_msg_to_stderr)                \
+        fprintf(stderr, "%s\n", _ss_.str().c_str());                    \
       throw std::logic_error(_ss_.str());                               \
     }                                                                   \
   } while (0)
@@ -34,8 +47,12 @@
 #endif
 
 #define rununittest(f) do {                     \
+    const auto t0 = acorn::dbg::gettime();      \
     ne = f();                                   \
-    if (ne) printf(#f " ne %d\n", ne);          \
+    const auto t1 = acorn::dbg::gettime();      \
+    if (ne) printf(#f " FAILED: ne %d\n", ne);  \
+    printf("%60s: %6.3f\n", #f, t1 - t0);       \
+    fflush(stdout);                             \
     nerr += ne;                                 \
   } while (0)
 

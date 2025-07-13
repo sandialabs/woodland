@@ -2,10 +2,13 @@
 #define INCLUDE_WOODLAND_ACORN_UTIL
 
 #include "woodland/acorn/acorn.hpp"
+#include "woodland/acorn/macros.hpp"
 
+#include <cstdio>
 #include <cassert>
 #include <cmath>
 #include <vector>
+#include <memory>
 
 namespace woodland {
 namespace acorn {
@@ -66,25 +69,6 @@ Real evalpoly (const int n, const Real* const c, const Real& x) {
 
 template <int N, typename Real> inline
 Real evalpoly (const Real* const c, const Real& x) { return evalpoly(N, c, x); }
-
-/* A flat segment extends from
-      (xc - dx, xc - dy)
-   to
-      (xc + dx, xc + dy).
-   For convenience, hl = sqrt(dx^2 + dy^2). dx, dy can each be negative or
-   positive. They set both the length of the segment and its orentiation.
- */
-struct FlatSegment {
-  Real xc, yc, dx, dy, hl;
-  FlatSegment () : xc(0), yc(0), dx(0), dy(0), hl(0) {}
-  FlatSegment (const Real xc, const Real yc, const Real dx, const Real dy)
-    : xc(xc), yc(yc), dx(dx), dy(dy)
-  { reset_hl(); }
-  void reset_hl () { hl = std::sqrt(square(dx) + square(dy)); }
-};
-
-void xyb_to_FlatSegments(const int ne, const Real* const xb, const Real* const yb,
-                         std::vector<FlatSegment>& els);
 
 // For R = [c -s; s c] and A = [a11 a12; a12 a22], return R A R'.
 inline void rotate_sym_tensor_2x2 (const Real c, const Real s,
@@ -225,17 +209,70 @@ void form_rotation_given_x(const Real x[3], Real R[9]);
 // Form row-major R such that R(1,:) = normalize(x) and R(2,:)'z = 0.
 void form_rotation_given_x_then_z(const Real x[3], const Real z[3], Real R[9]);
 
+// A = [a, c; c b].
+void sym_2x2_eig(const Real a, const Real b, const Real c,
+                 Real lams[2], Real v1[2], Real v2[2]);
+
 std::vector<std::string> split(std::string s, const std::string& delim);
 
+template <typename T> int nbytes () { return 0; }
+template <> inline int nbytes<float > () { return 4; }
+template <> inline int nbytes<double> () { return 8; }
+
+struct File {
+  typedef std::shared_ptr<File> Ptr;
+  File (FILE* fid_ = nullptr) : fid(fid_) {}
+  ~File () { if (fid) std::fclose(fid); }
+  FILE* id () { return fid; }
+  // fid == nullptr is permitted.
+  static File::Ptr create(FILE* fid);
+  // If fopen fails, nullptr is returned. On error and !quiet, print a message.
+  static File::Ptr create(const std::string& filename, const std::string& mode,
+                          const bool quiet=false);
+private:
+  FILE* fid;
+};
+
+bool file_exists(const std::string& filename);
+
 struct Sprinter {
-  Sprinter (const int nbuf_ = 128);
-  void add(const char* format, ...);
+  typedef std::shared_ptr<Sprinter> Ptr;
+  
+  // Write.
+  void wr(const char* format, ...);
+
+  // Use this class in one of two ways. Mixing them between reset calls is an
+  // error. Reset to switch APIs. At rest, the buffer is cleared.
+
+  // API 1. Gather one large string, then output it or return it.
+  Sprinter(const int nbuf_ = 128);
+  void reset(const int nbuf_ = 128);
   void out(FILE* stream = stdout, const bool newline = true) const;
   std::string str() const;
+  void clear();
+
+  // API 2. Buffer to a string if bufsz > 0; periodically write to the stream.
+  Sprinter(const File::Ptr& stream, const int bufsz = -1);
+  void reset(const File::Ptr& stream, const int bufsz = -1);
+  // The file is not assured to be complete until flush is called. reset and
+  // ~Sprinter call flush if needed.
+  void flush();
+
+  ~Sprinter();
 
 private:
+  bool str_api;
   int n, nbuf;
   std::vector<char> buf;
+  int bufsz;
+  File::Ptr fid;
+
+  void clear_();
+};
+
+struct SilenceThrowPrint {
+  SilenceThrowPrint();
+  ~SilenceThrowPrint();
 };
 
 int util_test();

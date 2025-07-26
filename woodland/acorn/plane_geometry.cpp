@@ -33,6 +33,22 @@ bool is_ccw (const Polygon& p, const bool assume_noncollinear) {
   return z > 0;
 }
 
+void calc_centroid (const Polygon& p, Real ctr[2]) {
+  Real x = 0, y = 0, twice_area = 0;
+  const Real x0 = p.xys[0], y0 = p.xys[1];
+  for (int i = 1; i < p.n-1; ++i) {
+    const auto p0 = &p.xys[2*i];
+    const auto p1 = &p.xys[2*((i+1)%p.n)];
+    const auto f = (p0[0] - x0)*(p1[1] - y0) - (p0[1] - y0)*(p1[0] - x0);
+    twice_area += f;
+    x += (p0[0] + p1[0])*f;
+    y += (p0[1] + p1[1])*f;
+  }
+  const auto six_times_area = 3*twice_area;
+  ctr[0] = x0/3 + x/six_times_area;
+  ctr[1] = y0/3 + y/six_times_area;
+}
+
 bool is_point_to_right_of_ray (const Pt p, const Pt v1, const Pt v2) {
   return is_ccw(v1, p, v2);
 }
@@ -275,6 +291,21 @@ void calc_nearest_point_on_polygon_boundary_to_point (
   }
 }
 
+static int test_calc_centroid () {
+  int ne = 0;
+  {
+    // A square with extra collinear points on one edge.
+    Real xys[] = {2,0, 3,0, 3,1, 2,1, 2,0.75, 2,0.1};
+    const Polygon p(xys, 6);
+    Real ctr[2];
+    calc_centroid(p, ctr);
+    const Real t[] = {2.5, 0.5};
+    for (int d = 0; d < 2; ++d)
+      if (std::abs(ctr[d] - t[d]) > 10*mv2::eps) ++ne;
+  }
+  return ne;
+}
+
 static int test_inscribe_largest_circle () {
   int ne = 0;
   {
@@ -465,13 +496,14 @@ static int test_misc () {
 }
 
 int unittest () {
-  int ne = 0;
-  ne += test_inscribe_largest_circle();
-  ne += test_intersect_line_line();
-  ne += test_intersect_line_circle_nearer();
-  ne += test_calc_nearest_point_on_polygon_boundary_to_point();
-  ne += test_misc();
-  return ne;
+  int nerr = 0, ne;
+  rununittest(test_calc_centroid);
+  rununittest(test_inscribe_largest_circle);
+  rununittest(test_intersect_line_line);
+  rununittest(test_intersect_line_circle_nearer);
+  rununittest(test_calc_nearest_point_on_polygon_boundary_to_point);
+  rununittest(test_misc);
+  return nerr;
 }
 
 } // namespace plane

@@ -21,7 +21,11 @@ void calc_sigma_point(
   // Receiver.
   const RealT rcv[3],
   // [sigma_11 sigma_12 sigma_13 sigma_22 sigma_23 sigma_33]
-  RealT sigma[6]);
+  RealT sigma[6],
+  // If true, return norm(rcv - src, 2)^3 times the Green's function.
+  const bool mult_by_R3 = false,
+  // If provided, direction vector from src to rcv.
+  const RealT* dir = nullptr);
 
 struct RectInfo {
   bool hfp;

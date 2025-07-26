@@ -36,6 +36,7 @@ namespace flatstrip {
  */
 
 using plane::Pt;
+typedef Matvec<2,Real> mv2;
 typedef Matvec<3,Real> mv3;
 
 Config::Config () {
@@ -132,8 +133,8 @@ struct SigmaExactIntegrands : public CallerIntegrands {
 
   int nintegrands () const override { return 6; }
 
-  Real permitted_R_min (const Real R_max) const override {
-    return 1e-3*R_max;
+  Real permitted_r_min (const Real r_max) const override {
+    return 1e-3*r_max;
   }
 
   void eval (const int n, CRPtr ps, RPtr integrand) const override {
@@ -157,6 +158,11 @@ struct SigmaExactIntegrands : public CallerIntegrands {
                              &integrand[6*i]);
       // jacdet = 1
     }
+  }
+
+  bool singular_pt (Real cc[2]) const override {
+    mv2::copy(rcv, cc);
+    return true;
   }
 
   plane::Polygon get_src_polygon () const {
@@ -184,7 +190,7 @@ eval_sigma_exact (Workspace& w, const SigmaExactIntegrands& s, RPtr sigma_out,
     integrals::Options io;
     io.np_radial = qp.np_radial;
     io.np_angular = qp.np_angular;
-    integrals::calc_hfp(w, io, p, s.rcv, s, sigma);
+    integrals::calc_hfp(w, io, p, s, sigma);
   } else {
     const auto triquad_order = qp.triquad_order <= 0 ?
       get_triquad_order(s.L, s.dist) : qp.triquad_order;

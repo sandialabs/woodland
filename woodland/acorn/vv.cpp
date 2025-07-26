@@ -52,7 +52,7 @@ std::string GeneralizedCylinder::convert (const Shape shape) {
 }
 
 bool GeneralizedCylinder::is_valid (const Shape shape) {
-  return shape >= circle && shape < invalid;
+  return shape >= circle and shape < invalid;
 }
 
 void GeneralizedCylinder::get_position (const Real u[2], Real x[3]) const {
@@ -142,6 +142,30 @@ void GeneralizedCylinder::get_vhat (const Real u[2], Real tan[3]) const {
   if (rotation != 0) {
     const Real xhat[] = {1, 0, 0};
     rotate_vector_3(xhat, rotation, tan);
+  }
+}
+
+void GeneralizedCylinder::get_jacobian (const Real u[2], Real J[6]) const {
+  J[0] = J[2] = 0;
+  const auto c = std::cos(u[1]), s = std::sin(u[1]);
+  switch (shape) {
+  case circle: {
+    J[1] = -radius*s; J[3] = radius*c;
+  } break;
+  case ellipse: {
+    J[1] = -ell_a*s; J[3] = ell_b*c;
+  } break;
+  default: assert(0); break;
+  }
+  J[4] = length; J[5] = 0;
+  if (rotation != 0) {
+    const Real xhat[] = {1, 0, 0};
+    for (int d = 0; d < 2; ++d) {
+      Real v[3];
+      for (int i = 0; i < 3; ++i) v[i] = J[2*i+d];
+      rotate_vector_3(xhat, rotation, v);
+      for (int i = 0; i < 3; ++i) J[2*i+d] = v[i];
+    }
   }
 }
 
@@ -320,7 +344,7 @@ std::string SigmaType::convert (const SigmaType::Enum e) {
 }
 
 bool SigmaType::is_valid (const Enum e) {
-  return e >= fs_okada && e < invalid;
+  return e >= fs_okada and e < invalid;
 }
 
 TestUvFn::Fn TestUvFn::convert (const int i) {
@@ -351,7 +375,7 @@ std::string TestUvFn::convert (const TestUvFn::Fn fn) {
 }
 
 bool TestUvFn::is_valid (const Fn fn) {
-  return fn >= constant && fn < invalid;
+  return fn >= constant and fn < invalid;
 }
 
 TestUvFn::TestUvFn (const Fn ufns[3], const Real uparms[9],
@@ -384,7 +408,7 @@ Real TestUvFn::eval (const Fn fn, const Real p[3], Real x) {
   case hat: {
     const Real ctr = p[1], w = p[2];
     assert(w > 0);
-    if (x >= ctr + w/2 || x <= ctr - w/2) return 0;
+    if (x >= ctr + w/2 or x <= ctr - w/2) return 0;
     return (fn == cosine_bell ?
             0.5*p[0]*(1 + std::cos(2*M_PI*(x - ctr)/w)) :
             fn == tapered ?
@@ -421,7 +445,7 @@ void eval_sigma_at_ctrs (
       Real suv[2], disloc_uv[3];
       gc.get_uv(src, suv);
       dislocf.eval(suv, disloc_uv);
-      if (dislocs && is == ir) copy(3, disloc_uv, &dislocs[3*is]);
+      if (dislocs and is == ir) copy(3, disloc_uv, &dislocs[3*is]);
       Real disloc[3];
       mv3::sum3(disloc_uv[0], tan, disloc_uv[1], uhat, disloc_uv[2], nml,
                 disloc);
@@ -463,8 +487,8 @@ void eval_sigma (
 {
   assert(SigmaType::is_valid(stype));
   const auto ncell = rt.ncell();
-  assert(is >= 0 && is < ncell);
-  assert(ircv >= 0 && ircv < ncell);
+  assert(is >= 0 and is < ncell);
+  assert(ircv >= 0 and ircv < ncell);
 
   const auto* const src = rt.get_cellctr(is);
   const auto* const nml = rt.get_normal(is);
@@ -578,41 +602,28 @@ struct SigmaExactIntegrands : public CallerIntegrands {
 
   int nintegrands () const override { return 6; }
 
-  Real permitted_R_min (const Real R_max) const override {
-    return 1e-3*R_max;
-  }
+  bool supports_mult_by_R3 () const override { return true; }
+
+  Real permitted_r_min (const Real r_max) const override { return 1e-3*r_max; }
 
   void eval (const int n, CRPtr p_uvs, RPtr integrand) const override {
-    for (int i = 0; i < n; ++i) {
-      Real p[3], vhat[3], nml[3], uhat[3], disloc_lcl[3], disloc[3];
-      const auto p_uv = &p_uvs[2*i];
-      gc.get_position(p_uv, p);
-      gc.get_vhat(p_uv, vhat);
-      gc.get_normal(p_uv, nml);
-      mv3::cross(nml, vhat, uhat);
-      if (dist > 0) {
-        switch (npt) {
-        case 2: extrap<2>(p_uv, disloc_lcl); break;
-        case 3: extrap<3>(p_uv, disloc_lcl); break;
-        case 4: extrap<4>(p_uv, disloc_lcl); break;
-        case 5: extrap<5>(p_uv, disloc_lcl); break;
-        case 6: extrap<6>(p_uv, disloc_lcl); break;
-        case 7: extrap<7>(p_uv, disloc_lcl); break;
-        case 8: extrap<8>(p_uv, disloc_lcl); break;
-        default: assert(0);
-        }
-      } else {
-        fdisloc.eval(p_uv, disloc_lcl);
-      }
-      mv3::sum3(disloc_lcl[0], vhat, disloc_lcl[1], uhat, disloc_lcl[2], nml,
-                disloc);
-      const auto ig = &integrand[6*i];
-      fs3d::calc_sigma_point(lam, mu, p, nml, disloc, rcv, ig);
-      const Real jacdet = gc.get_jacdet(p_uv);
-      for (int j = 0; j < 6; ++j) ig[j] *= jacdet;
-    }
+    eval(n, p_uvs, nullptr, integrand);
+  }
+  
+  void eval_mult_by_R3 (const int n, CRPtr p_uvs, CRPtr J_times_pdirs,
+                        RPtr integrand) const override {
+    eval(n, p_uvs, J_times_pdirs, integrand);
   }
 
+  void eval_shape_J(const Real p[2], Real J[6]) const override {
+    gc.get_jacobian(p, J);
+  }
+
+  bool singular_pt (Real p[2]) const override {
+    mv2::copy(rcv_uv, p);
+    return true;
+  }
+  
   plane::Polygon get_src_polygon () const {
     return plane::Polygon(rect_uv, 4);
   }
@@ -643,6 +654,41 @@ private:
       disloc_lcl[j] = eval_lagrange_poly(N, ip.u, f, p_uv[0]);
     }    
   }
+
+  void eval (const int n, CRPtr p_uvs, CRPtr J_times_pdirs,
+             RPtr integrand) const {
+    const bool mult_by_R3 = J_times_pdirs;
+    for (int i = 0; i < n; ++i) {
+      Real p[3], vhat[3], nml[3], uhat[3], disloc_lcl[3], disloc[3];
+      const auto p_uv = &p_uvs[2*i];
+      gc.get_position(p_uv, p);
+      gc.get_vhat(p_uv, vhat);
+      gc.get_normal(p_uv, nml);
+      mv3::cross(nml, vhat, uhat);
+      if (dist > 0) {
+        switch (npt) {
+        case 2: extrap<2>(p_uv, disloc_lcl); break;
+        case 3: extrap<3>(p_uv, disloc_lcl); break;
+        case 4: extrap<4>(p_uv, disloc_lcl); break;
+        case 5: extrap<5>(p_uv, disloc_lcl); break;
+        case 6: extrap<6>(p_uv, disloc_lcl); break;
+        case 7: extrap<7>(p_uv, disloc_lcl); break;
+        case 8: extrap<8>(p_uv, disloc_lcl); break;
+        default: assert(0);
+        }
+      } else {
+        fdisloc.eval(p_uv, disloc_lcl);
+      }
+      mv3::sum3(disloc_lcl[0], vhat, disloc_lcl[1], uhat, disloc_lcl[2], nml,
+                disloc);
+      const auto ig = &integrand[6*i];
+      fs3d::calc_sigma_point(lam, mu, p, nml, disloc, rcv, ig,
+                             mult_by_R3,
+                             mult_by_R3 ? &J_times_pdirs[3*i] : nullptr);
+      const Real jacdet = gc.get_jacdet(p_uv);
+      for (int j = 0; j < 6; ++j) ig[j] *= jacdet;
+    }
+  }
 };
 
 static void
@@ -654,7 +700,7 @@ eval_sigma_exact (Workspace& w, const SigmaExactIntegrands& s, RPtr sigma_out,
     integrals::Options io;
     io.np_radial = o.qp.np_radial;
     io.np_angular = o.qp.np_angular;
-    integrals::calc_hfp(w, io, p, s.rcv_uv, s, sigma);
+    integrals::calc_hfp(w, io, p, s, sigma);
   } else {
     const auto triquad_order = o.qp.triquad_order <= 0 ?
       get_triquad_order(s.L, s.dist) : o.qp.triquad_order;
@@ -670,7 +716,7 @@ void eval_sigma_exact (
   const SigmaExactOptions o, const bool thread)
 {
   const auto ncell = rt.ncell();
-  assert(isrc >= 0 && isrc < ncell);
+  assert(isrc >= 0 and isrc < ncell);
 
   if (thread) {
     ompparfor for (int ir = 0; ir < nuv; ++ir) {
@@ -774,7 +820,7 @@ void Errors::collect_errors (const A<int>& sigma_components, Results* r,
         const auto li_rel = lid == 0 ? lin : lin/lid;
         if (verbose)
           printf(" %9.3e (%9.3e) | %9.3e (%9.3e) \n", l2_rel, l2d, li_rel, lid);
-        if (r && iref+1 == nref) {
+        if (r and iref+1 == nref) {
           r->l2_errs[sti][ci] = l2_rel;
           r->linf_errs[sti][ci] = li_rel;
         }
@@ -819,9 +865,9 @@ namespace gencyl {
 Config::Config (const Problem problem) {
   lam = 1;
   mu = 1;
-  onedim = problem == p_circle || problem == p_ellipse;
-  gc.set_shape(problem == p_circle || problem == p_cylinder ?
-               gc.circle : gc.ellipse);
+  onedim = problem == p_circle or problem == p_ellipse;
+  gc.set_shape(problem == p_circle or problem == p_cylinder ?
+               gc.circle : gc.ellipse).set_rotation(-0.2);
   if (onedim) {
     n_u_cell_base = 1;
     n_v_cell_base = 16;
@@ -869,7 +915,7 @@ Results run (const Config& c, const bool verbose) {
   FILE* const fid = c.python_outfn.empty() ? nullptr :
     fopen(c.python_outfn.c_str(), "w");
   if (fid) impl::pyout::init(fid, e);
-  
+
   for (int iref = 0; iref < c.n_refine; ++iref) {
     const int nucell = c.onedim ? 1 : c.n_u_cell_base*(1 << iref);
     const int nvcell = c.n_v_cell_base*(1 << iref);
@@ -884,7 +930,7 @@ Results run (const Config& c, const bool verbose) {
     {
       const int fac = 8;
       RectTessellation rt_src;
-      assert(c.onedim || nucell % fac == 0);
+      assert(c.onedim or nucell % fac == 0);
       assert(nvcell % fac == 0);
       rt_src.init(c.gc, c.onedim ? 1 : nucell/fac, nvcell/fac);
       SigmaExactOptions o;
@@ -973,8 +1019,10 @@ int unittest () {
                             int& ne) {
     for (int i = 0; i < n; ++i) {
       const auto v = r.l2_errs[0][i];
-      if (v > hi*l2s[i] || v < lo*l2s[i])
+      if (v > hi*l2s[i] or v < lo*l2s[i]) {
+        pr(puf(l2s[i]) pu(v));
         ++ne;
+      }
     }                         
   };
   {
@@ -1009,10 +1057,11 @@ int unittest () {
     {
       int ne = 0;
       const auto r = run(c, verbose);
-      const Real l2s[] = {1.015e-09, 9.063e-03};
+      //const Real l2s[] = {1.015e-09, 9.063e-03};
+      const Real l2s[] = {2.602e-9, 9.063e-03};
       for (int i = 0; i < 2; ++i) {
         const auto v = r.l2_errs[i][0];
-        if (v > hi*l2s[i] || v < lo*l2s[i]) {
+        if (v > hi*l2s[i] or v < lo*l2s[i]) {
           printf("v %1.3e l2s[%d] %1.3e\n", v, i, l2s[i]);
           ++ne;
         }
@@ -1028,7 +1077,7 @@ int unittest () {
       const Real l2s[] = {2.933e-03};
       for (int i = 0; i < 1; ++i) {
         const auto v = r.l2_errs[i][0];
-        if (v > hi*l2s[i] || v < lo*l2s[i])
+        if (v > hi*l2s[i] or v < lo*l2s[i])
           ++ne;
       }
       if (ne) printf("vv::unittest 5 failed\n");
@@ -1053,8 +1102,8 @@ int unittest () {
     c.python_outfn = "";
     c.n_refine = 1;
     const auto r = run(c, verbose);
-    const Real l2s[] = {3.766e-01, 8.234e-02, 5.171e-02, 2.463e-01, 1.086e-01,
-                        2.883e-01};
+    const Real l2s[] = {3.766e-01, 8.234e-02, 5.072e-02, 2.463e-01, 1.086e-01,
+                        2.753e-01};
     cmp_l2s(l2s, r, 6, ne);
     if (ne) printf("vv::unittest 7 failed\n");
     nerr += ne;

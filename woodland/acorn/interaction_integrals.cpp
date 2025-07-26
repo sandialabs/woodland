@@ -40,11 +40,11 @@ struct Figure {
     if (ie != 0) return;
     {
       Sprinter s;
-      s.add("cc = npy.array([%1.6e,%1.6e])\n", cc[0], cc[1]);
-      s.add("poly = npy.array([");
+      s.wr("cc = npy.array([%1.6e,%1.6e])\n", cc[0], cc[1]);
+      s.wr("poly = npy.array([");
       for (int i = 0; i < p.n; ++i)
-        s.add("[%1.6e,%1.6e],", p.xys[2*i], p.xys[2*i+1]);
-      s.add("])\n");
+        s.wr("[%1.6e,%1.6e],", p.xys[2*i], p.xys[2*i+1]);
+      s.wr("])\n");
       s.out(fid, false);
     }
     {
@@ -88,18 +88,18 @@ struct Figure {
   {
     if (integrand_idx != iidx) return;
     Sprinter s;
-    if (ie == 0) s.add("th0 = []; th1 = []; R = []; radii = []\n");
-    s.add("th0.append(%1.6e); th1.append(%1.6e); R.append(%1.6e)\n", th0, th1, R);
+    if (ie == 0) s.wr("th0 = []; th1 = []; R = []; radii = []\n");
+    s.wr("th0.append(%1.6e); th1.append(%1.6e); R.append(%1.6e)\n", th0, th1, R);
     if (ie == iie) {
-      s.add("ie_circsec = %d\n", ie);
-      s.add("radii = npy.array([");
+      s.wr("ie_circsec = %d\n", ie);
+      s.wr("radii = npy.array([");
       for (int i = 0; i < o.np_radial; ++i)
-        s.add("%1.6e,", radii[i]);
-      s.add("])\n");
-      s.add("radial_integrand = npy.array([");
+        s.wr("%1.6e,", radii[i]);
+      s.wr("])\n");
+      s.wr("radial_integrand = npy.array([");
       for (int i = 0; i < o.np_radial; ++i)
-        s.add("%1.6e,", radial_integrand[i]);
-      s.add("])\n");
+        s.wr("%1.6e,", radial_integrand[i]);
+      s.wr("])\n");
     }
     s.out(fid, false);
   }
@@ -125,6 +125,7 @@ void fig_fin  () {}
 #endif // WOODLAND_ACORN_FIGURE
 
 typedef Matvec2d<Real> mv2;
+typedef Matvec3d<Real> mv3;
 
 struct EvalAccumulator {
   enum : int { capacity = RealPack::n };
@@ -134,18 +135,23 @@ struct EvalAccumulator {
   }
 
   // wrk size nint*(capacity + 1).
-  EvalAccumulator (RPtr wrk, const CallerIntegrands& f_)
-    : f(f_), nint(f.nintegrands()), n(0)
+  EvalAccumulator (RPtr wrk, const CallerIntegrands& f_,
+                   const bool mult_by_R3_ = false)
+    : f(f_), nint(f.nintegrands()), n(0), mult_by_R3(mult_by_R3_)
   {
     integrand = wrk;
     integral = wrk + nint*capacity;
     for (int i = 0; i < nint; ++i) integral[i] = 0;
   }
   
-  void accum (const Pt pt, const Real wt) {
+  void accum (const Pt pt, const Real wt, CRPtr J_x_pdir = nullptr) {
     pts[2*n  ] = pt[0];
     pts[2*n+1] = pt[1];
     wts[n] = wt;
+    if (J_x_pdir)
+      mv3::copy(J_x_pdir, &J_x_pdirs[3*n]);
+    else
+      assert(not mult_by_R3);
     ++n;
     if (n == capacity) flush();
   }
@@ -159,18 +165,18 @@ private:
   const CallerIntegrands& f;
   const int nint;
   int n;
-  Real pts[2*capacity], wts[capacity];
+  bool mult_by_R3;
+  Real pts[2*capacity], wts[capacity], J_x_pdirs[3*capacity];
   Real* integrand;
   Real* integral;
 
   void flush () {
     if ( ! n) return;
-#if 1
-    f.eval(n, pts, integrand);
-#else
-    for (int k = 0; k < n; ++k)
-      f.eval(1, &pts[2*k], &integrand[nint*k]);
-#endif
+    if (mult_by_R3) {
+      f.eval_mult_by_R3(n, pts, J_x_pdirs, integrand);
+    } else {
+      f.eval(n, pts, integrand);
+    }
     for (int k = 0; k < n; ++k)
       for (int i = 0; i < nint; ++i)
         integral[i] += wts[k]*integrand[nint*k+i];
@@ -189,6 +195,39 @@ static void calc_thetas(const Pt v0, const Pt v1, Real& th0, Real& th1) {
   assert(std::abs(th1 - th0) <= M_PI);
 }
 
+/* Note on 'fac':
+
+   For r > 0, the theta-independent factor is as follows:
+         (1/2 for [-1,1] quadrature)
+       * (|th1 - th0| r for circle circumference)
+       * (r^2 for singularity)
+
+   In the case r = 0, the theta-dependent factor is as follows:
+       lim_{r->0}
+           (1/2 for [-1,1] quadrature)
+         * (|th1 - th0| r for circle circumference)
+         * (r^2 for singularity)
+         / R(r,th)^3
+       = 1/2 |th1 - th0| q^3,
+   where
+       q = lim_{r->0} r/R(r,th) = lim_{r->0} 1/R_r(r,th).
+   We use the following relations:
+       (x,y,z) = f(u,v) = f(u_s + r cos th, v_s + r sin th)
+       x_r = x_u (u_s + r cos th)_r + ...
+           = x_u cos th
+       c = cos th, s = sin th
+       J = [f_u, f_v]
+       f_r(r,th) = J [c; s]
+       R_r = R_x x_r + R_y y_r + R_z z_r
+           = [R_x, R_y, R_z] J [c; s]
+           = ([x, y, z] J [c; s])/R
+           = normalize([x,y,z]) J [c; s].
+       lim_{r->0} [x(r,th),y,z]/r = [x_r(0,th), y_r, z_r] = J [c; s]
+   Thus,
+       q = 1/(normalize(J [c; s]]) J [c; s])
+         = 1/sqrt([c, s] J'J [c; s]).
+*/
+
 // Input values are overwritten.
 static void calc_hfp_circle_arc_integral_times_rsquared (
   const Options& o, RPtr wrk, const Pt cc, const Real r, const Real th0,
@@ -197,22 +236,33 @@ static void calc_hfp_circle_arc_integral_times_rsquared (
   assert(is_gll_supported(o.np_angular));
   const auto* const qth = get_x_gll(o.np_angular);
   const auto* const wth = get_w_gll(o.np_angular);
-  EvalAccumulator ea(wrk, f);
-  // Factor is as follows:
-  //     (1/2 for [-1,1] quadrature)
-  //   * (|th1 - th0| r for circle circumference)
-  //   * (r^2 for singularity)
-  const auto fac = 0.5*std::abs(th1 - th0)*cube(r);
+  const bool mult_by_R3 = r == 0 and f.supports_mult_by_R3();
+  EvalAccumulator ea(wrk, f, mult_by_R3);
+  Real J[6] = {0};
+  if (mult_by_R3)
+    f.eval_shape_J(cc, J);
   for (int igll = 0; igll < o.np_angular; ++igll) {
     const auto a = (1 + qth[igll])/2;
     const auto theta = (1-a)*th0 + a*th1;
-    Pt pt{r*std::cos(theta), r*std::sin(theta)};
+    const auto c = std::cos(theta), s = std::sin(theta);
+    Pt pt{r*c, r*s};
     mv2::axpy(1, cc, pt);
-    ea.accum(pt, wth[igll]*fac);
+    Real fac = 1;
+    Real J_x_pdir[3] = {0};
+    if (mult_by_R3) {
+      for (int d = 0; d < 3; ++d)
+        J_x_pdir[d] = -(J[2*d]*c + J[2*d+1]*s);
+      const auto qinv = mv3::norm2(J_x_pdir);
+      fac = 0.5*std::abs(th1 - th0)/cube(qinv);
+    }
+    ea.accum(pt, wth[igll]*fac, J_x_pdir);
   }
   const auto* eai = ea.get_integral();
+  const auto fac = (mult_by_R3 ?
+                    1 : // already computed
+                    (0.5*std::abs(th1 - th0)*cube(r)));
   for (int i = 0, n = f.nintegrands(); i < n; ++i)
-    integral[i] = eai[i];
+    integral[i] = eai[i]*fac;
 }
 
 struct RadialP : public hfp::CallerPolyP {
@@ -239,10 +289,10 @@ get_circular_sector_term_wrk_nbyte (const Options& o, const CallerIntegrands& f)
 
 static void
 calc_hfp_circular_sector_term (const Options& o, Real* wrk, const Pt cc,
-                               const Real R, const Real th0, const Real th1,
+                               const Real r_max, const Real th0, const Real th1,
                                const CallerIntegrands& f, RPtr hfps) {
-  const auto R_min = f.permitted_R_min(R);
-  assert(R_min < R);
+  const auto r_min = f.supports_mult_by_R3() ? 0 : f.permitted_r_min(r_max);
+  assert(r_min < r_max);
   const int nintegrands = f.nintegrands();
 
   Real radii[Quadrature::max_nq];
@@ -254,12 +304,12 @@ calc_hfp_circular_sector_term (const Options& o, Real* wrk, const Pt cc,
   for (int i = 0; i < nintegrands*o.np_radial; ++i)
     radial_integrand[i] = 0;
   
-  { // Form the integrand in r from R_min to R.
+  { // Form the integrand in r from r_min to R.
     assert(is_gll_supported(o.np_radial));
     const auto* const qr = get_x_gll(o.np_radial);
     for (int j = 0; j < o.np_radial; ++j) {
       const auto a_gl = j == 0 ? 0 : j == o.np_radial-1 ? 1 : (1 + qr[j])/2;
-      const auto r = a_gl*R + (1 - a_gl)*R_min;
+      const auto r = a_gl*r_max + (1 - a_gl)*r_min;
       radii[j] = r;
       calc_hfp_circle_arc_integral_times_rsquared(o, wrk, cc, r, th0, th1, f,
                                                   integral);
@@ -268,15 +318,15 @@ calc_hfp_circular_sector_term (const Options& o, Real* wrk, const Pt cc,
     }
   }
 
-  { // Calculate hfp int_0^R ...
+  { // Calculate hfp int_0^(r_max) ...
     hfp::Options o1d;
     o1d.gl_np = o.np_radial;
     for (int i = 0; i < nintegrands; ++i) {
       RadialP p(o.np_radial, radii, &radial_integrand[o.np_radial*i]);
-      hfps[i] += hfp::calc_hfp(o1d, p, 0, R, 0);
+      hfps[i] += hfp::calc_hfp(o1d, p, 0, r_max, 0);
 #ifdef WOODLAND_ACORN_FIGURE
       if (g_fig)
-        g_fig->circular_sector_term_1(o, th0, th1, cc, R, radii,
+        g_fig->circular_sector_term_1(o, th0, th1, cc, r_max, radii,
                                       &radial_integrand[o.np_radial*i], i);
 #endif
     }
@@ -336,7 +386,7 @@ calc_integral_radtricirc (const Options& o, RPtr wrk, const Pt cc, const Real R,
   //todo If Rv is very close to R, then this integral doesn't contribute very
   // much. In the future, I'd like to filter out such cases. For now, assert
   // here so I know when this case is occurring at the machine precision level.
-  assert(Rv > R);
+  //assert(Rv > R);
   mv2::copy(v, p_base);
   mv2::scale(R/Rv, p_base);
 
@@ -381,8 +431,11 @@ static void decompose_tri (const Pt v1, const Pt v2,
   R02 = mv2::norm22(pt);
 }
 
-bool calc_hfp (Workspace& w, const Options& o, const Polygon& p, const Pt cc,
+bool calc_hfp (Workspace& w, const Options& o, const Polygon& p,
                const CallerIntegrands& f, RPtr hfps) {
+  Pt cc;
+  const bool have_sing = f.singular_pt(cc);
+  throw_if(not have_sing, "calc_hfp: f.singular_pt must return true.");
   const int nint = f.nintegrands();
   w.set_cap(2*nint*sizeof(Real) + get_circular_sector_term_wrk_nbyte(o, f));
   RPtr ghfps = static_cast<Real*>(w.get());
@@ -530,10 +583,18 @@ bool calc_integral_tensor_quadrature (
 namespace {
 
 struct One : public CallerIntegrands {
+  One (const Real cc_[2]) : cc(cc_) {}
   int nintegrands () const override { return 1; }
   void eval (const int n, CRPtr p, RPtr integrand) const override {
     for (int i = 0; i < n; ++i) integrand[i] = 1;
   }
+  bool singular_pt (Real p[2]) const override {
+    if (not cc) return false;
+    mv2::copy(cc, p);
+    return true;
+  }
+private:
+  CRPtr cc;
 };
 
 int test_area (const Polygon& p, const Pt cc) {
@@ -552,14 +613,14 @@ int test_area (const Polygon& p, const Pt cc) {
   Options o;
   o.np_angular = 9;
   Real area = 0;
-  if ( ! calc_hfp(w, o, p, cc, One(), &area)) ++ne;
+  if ( ! calc_hfp(w, o, p, One(cc), &area)) ++ne;
   if (std::abs(area - area_true) >= 1e3*area_true*mv2::eps) {
     printf("integrals::test_area (hfp) %1.3f %1.2e\n",
            area, std::abs(area - area_true)/area_true);
     ++ne;
   }
   area = 0;
-  if ( ! calc_integral(w, p, One(), &area)) ++ne;
+  if ( ! calc_integral(w, p, One(nullptr), &area)) ++ne;
   if (std::abs(area - area_true) >= 1e1*area_true*mv2::eps) {
     printf("otherint::test_area (integral) %1.3f %1.2e\n",
            area, std::abs(area - area_true)/area_true);
@@ -616,7 +677,7 @@ int test_area () {
 struct SingularTestIntegrands : public CallerIntegrands {
   enum : int { nint = 4 };
   int nintegrands () const override { return nint; }
-  Real permitted_R_min (const Real /*R_max*/) const override {
+  Real permitted_r_min (const Real /*r_max*/) const override {
     return std::cbrt(std::numeric_limits<Real>::min());
   }
   void eval (const int n, CRPtr p, RPtr integrand) const override {
@@ -681,6 +742,10 @@ struct NonsingularTestIntegrands : public CallerIntegrands {
       integrand[i] = square(x - cc[0])*cube(y - cc[1]);
     }
   };
+  bool singular_pt (Real p[2]) const override {
+    mv2::copy(cc, p);
+    return true;
+  }
 };
 
 int test_integral () {
@@ -692,7 +757,7 @@ int test_integral () {
   for (int i = 0; i < 4; ++i) mv2::axpy(1, f.cc, &xys[2*i]);
   const Polygon p(xys, 4);
   Real hfps[NonsingularTestIntegrands::nint] = {0};
-  if ( ! calc_hfp(w, Options(), p, f.cc, f, hfps)) ++ne;
+  if (not calc_hfp(w, Options(), p, f, hfps)) ++ne;
   if (std::abs(hfps[0] - 45.0/4) > 1e4*mv2::eps) {
     printf("integrals::test_integral: %f %e\n",
            hfps[0], std::abs(hfps[0] - 45.0/4));
@@ -732,7 +797,7 @@ int analyze_area () {
   for (int i = 0; i < n; ++i) mv2::axpy(1, cc, &xys[2*i]);
   const Polygon p(xys, n);
   Real area = 0;
-  calc_hfp(w, Options(), p, cc, One(), &area);
+  calc_hfp(w, Options(), p, One(cc), &area);
   if (std::abs(area -4) > 1e4*mv2::eps) ++ne;
   area = hfp::calc_hfp(hfp::Options(), AnalyzeP(), 0, 1, 0);
   if (std::abs(area - M_PI) > 5e1*mv2::eps) ++ne;
@@ -740,14 +805,147 @@ int analyze_area () {
   return ne;
 }
 
+struct MultByR3TestIntegrands : public CallerIntegrands {
+  enum : int { nint = 2 };
+
+  MultByR3TestIntegrands () {
+    support_mult_by_R3 = false;
+    r_min = std::cbrt(std::numeric_limits<Real>::min());
+    flat_geometry = true;
+    uv_sing[0] = uv_sing[1] = 0;
+  }
+
+  bool singular_pt (Real uv[2]) const override {
+    mv2::copy(uv_sing, uv);
+    return true;
+  }
+
+  void set_options (const bool support_mult_by_R3_,
+                    const Real r_min_,
+                    const bool flat_geometry_) {
+    support_mult_by_R3 = support_mult_by_R3_;
+    r_min = r_min_;
+    flat_geometry = flat_geometry_;
+  }
+
+  int nintegrands () const override { return nint; }
+
+  void eval (const int n, CRPtr p, RPtr integrand) const override {
+    eval(n, p, nullptr, integrand);
+  }
+
+  void eval_mult_by_R3 (const int n, CRPtr p, CRPtr J_times_pdir,
+                        RPtr integrand) const override {
+    eval(n, p, J_times_pdir, integrand);
+  }
+
+  bool supports_mult_by_R3 () const override { return support_mult_by_R3; }
+
+  Real permitted_r_min (const Real) const override { return r_min; }
+
+  void eval_shape_J(const Real p[2], Real J[6]) const override {
+    geometry(p, nullptr, nullptr, J);
+  }
+
+private:
+  bool support_mult_by_R3;
+  Real r_min;
+  bool flat_geometry;
+  Real uv_sing[2];
+
+  void eval (const int n, CRPtr p, CRPtr J_times_pdir, RPtr integrand) const {
+    const bool mult_by_R3 = J_times_pdir;
+    Real xyz_sing[3];
+    geometry(uv_sing, xyz_sing);
+    for (int k = 0; k < n; ++k) {
+      Real xyz[3], jacdet, J[6], d[3];
+      geometry(&p[2*k], xyz, &jacdet, J);
+      integrand[2*k]   = jacdet*1;
+      integrand[2*k+1] = jacdet*xyz[0];
+      if (not mult_by_R3) {
+        mv3::subtract(xyz, xyz_sing, d);
+        const auto R3 = cube(mv3::norm2(d));
+        for (int i = 0; i < 2; ++i)
+          integrand[2*k+i] /= R3;
+      }
+    }
+  }
+
+  void geometry (const Real uv[2], Real* xyz = nullptr, Real* jacdet = nullptr,
+                 Real* J = nullptr) const {
+    if (flat_geometry) {
+      if (xyz) { xyz[0] = uv[0]; xyz[1] = uv[1]; xyz[2] = 0; }
+      if (jacdet) *jacdet = 1;
+      if (J) { J[0] = 1; J[1] = 0; J[2] = 0; J[3] = 1; J[4] = 0; J[5] = 0; }
+      return;
+    }
+    const Real
+      u = uv[0],
+      v = uv[1],
+      x_u = 0.7,
+      y_v = 1.1,
+      x = x_u*u,
+      y = y_v*v,
+      zu = (0.1*u*u + 0.8*u - 0.1),
+      zv = (-0.1*v*v + v + 1.3),
+      z = zu*zv;
+    if (xyz) {
+      xyz[0] = x;
+      xyz[1] = y;
+      xyz[2] = z;
+    }
+    if (not (jacdet or J)) return;
+    const Real
+      z_u = (0.2*u + 0.8)*zv,
+      z_v = zu*(-0.2*v + 1);
+    if (jacdet)
+      *jacdet = std::sqrt((square(x_u) + square(z_u))*
+                          (square(y_v) + square(z_v)) -
+                          square(z_u*z_v));
+    if (J) {
+      J[0] = x_u; J[1] = 0;
+      J[2] = 0;   J[3] = y_v;
+      J[4] = z_u; J[5] = z_v;
+    }
+  }
+};
+
+int test_mult_by_R3 () {
+  int ne = 0;
+  MultByR3TestIntegrands f;
+  Real cc[2];
+  f.singular_pt(cc);
+  const Real R = 0.5;
+  Options o;
+  Workspace w;
+  const auto nbyte = get_circular_sector_term_wrk_nbyte(o, f);
+  RPtr wrk = static_cast<Real*>(w.set_cap(nbyte));
+  Real hfps[4][f.nint] = {0};
+  f.set_options(false, 1e-3, true);
+  calc_hfp_circular_sector_term(o, wrk, cc, R, 0, 2*M_PI, f, hfps[0]);
+  f.set_options(true, 100 /* test this has no effect */, true);
+  calc_hfp_circular_sector_term(o, wrk, cc, R, 0, 2*M_PI, f, hfps[1]);
+  f.set_options(false, 1e-3, false);
+  calc_hfp_circular_sector_term(o, wrk, cc, R, 0, 2*M_PI, f, hfps[2]);
+  f.set_options(true, 0, false);
+  calc_hfp_circular_sector_term(o, wrk, cc, R, 0, 2*M_PI, f, hfps[3]);
+  for (int i = 0; i < 2; ++i) {
+    if (std::abs(hfps[i][0] - (-2*M_PI/R)) > 1e-9) ++ne; // true: -2 pi/R
+    if (std::abs(hfps[i][1]) > 1e-12) ++ne;              // true: 0
+    if (std::abs(hfps[2][i] - hfps[3][i]) > 2e-11*std::abs(hfps[2][i])) ++ne;
+  }
+  return ne;
+}
+
 } // namespace
 
 int unittest () {
-  int ne = 0;
-  ne += analyze_area();
-  ne += test_area();
-  ne += test_calc_hfp_circle();
-  ne += test_integral();
+  int nerr = 0, ne;
+  rununittest(analyze_area);
+  rununittest(test_area);
+  rununittest(test_calc_hfp_circle);
+  rununittest(test_integral);
+  rununittest(test_mult_by_R3);
   return ne;
 }
   

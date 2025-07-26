@@ -13,7 +13,7 @@ namespace woodland {
 namespace acorn {
 namespace vv {
 
-// Verification and validation problems.
+// Verification and (not yet) validation problems.
 
 // (u,v) in [0,1] x [0, 2 pi].
 struct Surface {
@@ -26,7 +26,8 @@ struct Surface {
   virtual void get_normal   (const Real uv[2], Real nml[3]) const = 0;
   virtual void get_vhat     (const Real uv[2], Real tan[3]) const = 0;
   virtual void get_uhat     (                 Real uhat[3]) const = 0;
-  // Jacobian determinant.
+  // Row-major Jacobian and its determinant.
+  virtual void get_jacobian (const Real uv[2], Real J[6]) const = 0;
   virtual Real get_jacdet   (const Real uv[2]) const = 0;
 
   virtual void get_uv(const Real xyz[3], Real uv[2]) const = 0;
@@ -49,7 +50,11 @@ struct FlatRectangle : public Surface {
   { tan[0] = tan[2] = 0; tan[1] = 1; }
   void get_uhat     (                 Real uhat[3]) const override
   { uhat[0] = 1; uhat[1] = uhat[2] = 0; }
-  // Jacobian determinant.
+  void get_jacobian (const Real uv[2], Real J[6]) const override {
+    J[0] = 1; J[1] = 0;
+    J[2] = 0; J[3] = 1;
+    J[4] = J[5] = 0;
+  }
   Real get_jacdet   (const Real uv[2]) const override { return 1; }
 
   void get_uv(const Real xyz[3], Real uv[2]) const override
@@ -97,6 +102,7 @@ struct GeneralizedCylinder : public Surface {
   void get_normal   (const Real uv[2], Real nml[3]) const override;
   void get_vhat     (const Real uv[2], Real tan[3]) const override;
   void get_uhat     (                 Real uhat[3]) const override;
+  void get_jacobian (const Real uv[2], Real J[6]) const override;
   Real get_jacdet   (const Real uv[2]) const override;
 
   void get_uv(const Real xyz[3], Real uv[2]) const override;

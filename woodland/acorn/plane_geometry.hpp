@@ -28,6 +28,8 @@ bool is_ccw(const Polygon& p,
             // Assume there are no collinear vertices.
             const bool assume_noncollinear=true);
 
+void calc_centroid(const Polygon& p, Real ctr[2]);
+
 // Is p to the right of the ray v1->v2?
 bool is_point_to_right_of_ray(const Pt p, const Pt v1, const Pt v2);
 

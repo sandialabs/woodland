@@ -4,8 +4,6 @@
 Displacement Discontinuity Method Green's function over convex polygonal
 elements on a curved fault.
 
-It is largely complete.
-
 ### Interface
 
 Acorn provides routines to compute the self-interaction (`calc_hfp` in

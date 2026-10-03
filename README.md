@@ -1,19 +1,18 @@
-Woodland will provide methods to construct the Displacement Discontinuity Method
+Woodland provides methods to construct the Displacement Discontinuity Method
 (DDM) elastostatic operator for curved faults. This operator can then be used in
 quasidynamic rate-state friction earthquake simulators.
 
-Woodland is a work in progress and is not yet ready for general use. Currently,
-low-level calculations are implemented in the directory `woodland/acorn` for the
-self-interaction Hadamard finite part and the other-interaction proper integral
-for convex polygons on curved fractures with general dislocations, where the
-fault shape and the dislocation must be smooth within a polygon.
+Low-level calculations are implemented in the directory `woodland/acorn`. These
+include the self-interaction Hadamard finite part and the other-interaction
+proper integral for convex polygons on curved fractures with general
+dislocations in elastic whole- and half-spaces.
 
-In the future, the directory `woodland/squirrel` will contain a DDM
-discretization based on these tools. Currently, it is a work in progress and
-contains only a discretization to support a convergence test.
+`woodland/squirrel` provides a basic DDM discretization API built on these
+tools. A convergence test demonstrates and exercises this API.
 
-Finally, the directory `woodland/oak` will contain a simple quasidynamic
-rate-state friction simulator to demonstrate the use of the operator.
+Finally, the directory `woodland/oak` may one day contain a simple quasidynamic
+rate-state friction simulator to demonstrate the use of the operator. Currently,
+it is empty.
 
 ## Build and run unit test
 

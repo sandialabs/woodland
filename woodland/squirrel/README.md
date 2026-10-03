@@ -1,13 +1,14 @@
 ## Squirrel
 
-`woodland::squirrel` contains mesh and discretization tools for curved faults.
-
-It is a work in progress. Currently, it provides a discretization sufficient to
-construct a convergence test.
+`woodland::squirrel` contains mesh and discretization tools for curved
+faults. It provides a discretization API and implementations sufficient to
+construct a convergence test. Users generally must implement their own fault
+representations.
 
 ### Convergence test
 
-Squirrel provides a convergence test that demonstrates use of Acorn.
+Squirrel provides a convergence test that demonstrates use of its discretization
+API and Acorn.
 
 The surface is described by $z(x,y) = f(x)$ for $x,y \in [0,1]$. $f(x)$ is
 usually $f(x) = 0.3 \ x \ \sin(2 \pi x) - 0.4$, which is interesting but simple

@@ -10,9 +10,11 @@ dislocations in elastic whole- and half-spaces.
 `woodland/squirrel` provides a basic DDM discretization API built on these
 tools. A convergence test demonstrates and exercises this API.
 
-Finally, the directory `woodland/oak` may one day contain a simple quasidynamic
+The directory `woodland/oak` may one day contain a simple quasidynamic
 rate-state friction simulator to demonstrate the use of the operator. Currently,
 it is empty.
+
+Finally, `doc/theory.pdf` describes the methods used in this software.
 
 ## Build and run unit test
 

@@ -59,7 +59,7 @@ template <typename Real>
 void BezierCubic<Real>
 ::eval_ptt (CRPtr c, const Real& t, Vec2 ptt) {
   const auto t2p = 2*t, t2pp = 2, t3pp = 6*t;
-  const auto r = 1-t, r2p = -2*r, r2pp = 2, r3pp = 6*r;
+  const auto r = 1-t, r2p = -2*r, r2pp = 2.0, r3pp = 6*r;
   for (int d = 0; d < 2; ++d)
     ptt[d] = (c[d]*r3pp + c[2+d]*(r2pp*t + 2*r2p) + c[4+d]*(r*t2pp - 2*t2p) +
               c[6+d]*t3pp);
